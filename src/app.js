@@ -515,6 +515,32 @@ function showResultDiaglog(){
     `;
     }
   resultDialog.showModal();
+  // ✅ 嘗試使用 dialog（桌機 Chrome / Firefox）
+if (resultDialog && typeof resultDialog.showModal === "function") {
+  try {
+    resultDialog.showModal();
+    return;
+  } catch (e) {
+    // 失敗就 fallback
+  }
+}
+
+// ✅ fallback：直接顯示為 open（行動裝置一定看得到）
+resultDialog.setAttribute("open", "");
+
+// （前面設定 dialogTitle / dialogBody 的內容保持不動）
+
+// ✅ 顯示結果字卡（跨瀏覽器安全）
+if (resultDialog && typeof resultDialog.showModal === "function") {
+  try {
+    resultDialog.showModal();
+  } catch (e) {
+    resultDialog.setAttribute("open", "");
+  }
+} else {
+  resultDialog.setAttribute("open", "");
+}
+
   if (rafID !== null) {
     cancelAnimationFrame(rafID);
     rafID = null;
