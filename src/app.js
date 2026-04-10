@@ -440,14 +440,45 @@ function loop(){
 /* ===============================
    Finish
    =============================== */
-function finish(){
-  const m=state.manual;
-  m.running=false;
-  state.animating=false;
-  animationRunning=false; // ✅ 關掉動畫鎖
 
-  dialogTitle.textContent="完成了！";
-  dialogBody.innerHTML="你已完成這一次的選擇。<br/>徒 1:11";
+function finish(){
+  const m = state.manual;
+  m.running = false;
+  state.animating = false;
+  animationRunning = false;
+
+  // ✅ 判斷是否到達天國
+  const reachedHeaven = (m.endCol === state.heavenIndex);
+  const endLabel = state.endLabels[m.endCol] || "未知的地方";
+
+  // ✅ 依結果顯示不同內容
+  if (reachedHeaven) {
+    dialogIcon.textContent = "🎉";
+    dialogTitle.textContent = "你到達天國了！";
+    dialogDesc.textContent = "你選擇了正確的道路";
+    dialogBody.innerHTML = `
+      <div style="margin-bottom:8px;"><b>終點：</b> ${endLabel}</div>
+      <div style="margin-bottom:10px;">
+        🎉 做得好！在等耶穌再來的日子，也要每天走在跟隨祂的路上。
+      </div>
+      <div style="font-weight:800;color:rgba(36,48,74,.7);font-size:13px;">
+        「你們見祂怎樣往天上去，祂還要怎樣來。」（徒 1:11）
+      </div>
+    `;
+  } else {
+    dialogIcon.textContent = "🙂";
+    dialogTitle.textContent = "再試一次！";
+    dialogDesc.textContent = "這條路很吸引人，但沒有通往天國";
+    dialogBody.innerHTML = `
+      <div style="margin-bottom:8px;"><b>終點：</b> ${endLabel}</div>
+      <div style="margin-bottom:10px;">
+        🙂 沒關係～再試一次！一步一步選擇走在正確的路上。
+      </div>
+      <div style="font-weight:800;color:rgba(36,48,74,.7);font-size:13px;">
+        「你們見祂怎樣往天上去，祂還要怎樣來。」（徒 1:11）
+      </div>
+    `;
+    }
   resultDialog.showModal();
   if (rafID !== null) {
     cancelAnimationFrame(rafID);
