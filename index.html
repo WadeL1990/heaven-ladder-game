@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>爬梯圖：去天國的路</title>
+  <meta name="description" content="兒童主日學互動網頁遊戲：爬梯圖（鬼腳圖），只有一條路通往天國。" />
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="brand">
+        <div class="logo">☁️✨</div>
+        <div class="titles">
+          <h1>爬梯圖：去天國的路</h1>
+          <p>選一個角色出發吧！只有一條路會到 <b>✨天國</b>。</p>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btnNew" class="btn btn-secondary" aria-label="換一張新地圖">🗺️ 換一張新地圖</button>
+        <button id="btnGo" class="btn btn-primary" aria-label="出發走走看">🚶 出發！走走看</button>
+      </div>
+    </header>
+
+    <main class="card">
+      <section class="picker">
+        <div class="pickerTitle">選擇起點角色：</div>
+        <div id="choices" class="chips" role="list"></div>
+        <div class="tip">
+          小提示：先猜猜看哪個角色會到 ✨天國，再按「出發！走走看」～
+        </div>
+      </section>
+
+      <section class="stage">
+        <canvas id="game" aria-label="爬梯圖遊戲畫布"></canvas>
+      </section>
+
+      <section class="message" id="message">
+        <div class="messageTitle">🎯 今天的挑戰</div>
+        <div class="messageBody">
+          找到通往 <b>✨天國</b> 的那條路！<br/>
+          <span class="verse">可搭配經文：馬太福音 7:13–14（窄門與生命之路）</span>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>Made for Kids ✿ 主日學互動體驗</span>
+    </footer>
+  </div>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
