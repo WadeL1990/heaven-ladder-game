@@ -1,37 +1,40 @@
 // src/app.js
-// Cartoon ladder game (Amidakuji/Ghost Leg) for Kids Sunday School
-// Manual mode: choose start -> marker walks down -> when reaching a rung, STOP and wait for child to click the correct rung.
-// Heaven fixed at the center column; number of columns is always odd.
+// Manual ladder game (Amidakuji/Ghost Leg) for Kids Sunday School
+// Upward journey: START at bottom, END at top.
+// Manual mode: marker moves upward; at each rung on the true path, STOP and wait for child to click that rung.
+// Hint mode toggle: show/hide pulsing rung + "點我!" text.
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
 const elChoices = document.getElementById("choices");
 const elMsg = document.getElementById("message");
+const elTip = document.getElementById("tip");
 
 const btnNew = document.getElementById("btnNew");
 const btnGo = document.getElementById("btnGo");
+const btnHint = document.getElementById("btnHint");
 
 // =========================
 // Config
 // =========================
 const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
-// Always odd columns. Recommend 5 for kids. If you want harder: [5, 7]
+// Always odd columns. Recommend 5 for kids.
 const ODD_COUNTS = [5];
 
-// Rows range (more rows = more rungs = more complex)
+// Rows range
 const ROWS_RANGE = [11, 15];
 
-// Canvas paddings
+// Canvas paddings (leave space for labels at top & bottom)
 const PADDING = { top: 92, bottom: 96, left: 96, right: 96 };
 
 // Visual sizes
 const LINE_WIDTH = 10;
 const RUNG_WIDTH = 10;
 
-// Manual movement speed (CSS pixels per frame)
-const SPEED_DOWN = 3.6;
+// Movement speed (CSS pixels per frame)
+const SPEED_UP = 3.6;
 const SPEED_CROSS = 4.8;
 
 // Click tolerance in CSS pixels for rung hit-testing
@@ -48,39 +51,38 @@ let state = {
   N: 5,
   ROWS: 13,
   selected: 0,
-  rungs: [],         // rungs[r] = [c, c2...] means rung connects c<->c+1 at row r
+
+  rungs: [],         // rungs[r] = [c...] rung connects c<->c+1 at row r
   endLabels: [],
   heavenIndex: 2,    // (N-1)/2
+
   animating: false,
   confetti: [],
+
+  hintsEnabled: true,
 
   manual: {
     running: false,
     waitingClick: false,
-    // targets are rungs that are actually on the path from chosen start
-    // each item: { row, y, x1, x2, dir } where dir is +1 (to right) or -1 (to left)
-    targets: [],
+    // rungs on actual path when traveling upward
+    targets: [],       // [{row, y, x1, x2, dir}]
     targetIndex: 0,
 
-    marker: { x: 0, y: 0 },  // current marker position
-    to: { x: 0, y: 0 },      // current goal position
-    phase: "idle",           // "down" | "wait" | "cross" | "done"
+    marker: { x: 0, y: 0 },
+    to: { x: 0, y: 0 },
+    phase: "idle",     // "up" | "wait" | "cross" | "done"
 
-    // Visual aids
     hintT: 0,
     shake: 0,
 
-    // Draw traveled path as polyline points
-    pathPts: []              // [{x,y}, ...]
+    pathPts: []        // polyline points
   }
 };
 
 // =========================
 // Utils
 // =========================
-function randInt(a, b) {
-  return Math.floor(Math.random() * (b - a + 1)) + a;
-}
+function randInt(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -90,7 +92,6 @@ function shuffle(arr) {
   return a;
 }
 
-// Canvas resize to responsive size
 function resizeCanvas() {
   const cssWidth = canvas.clientWidth || 980;
   const cssHeight = Math.round(cssWidth * 0.68);
@@ -113,42 +114,31 @@ function layout() {
   const dy = (bottom - top) / (state.ROWS - 1);
   return { w, h, left, right, top, bottom, dx, dy };
 }
-function xOf(col) {
-  const { left, dx } = layout();
-  return left + col * dx;
-}
-function yOf(row) {
-  const { top, dy } = layout();
-  return top + row * dy;
-}
+function xOf(col) { const { left, dx } = layout(); return left + col * dx; }
+function yOf(row) { const { top, dy } = layout(); return top + row * dy; }
 
-// Convert pointer event to canvas coordinates (CSS pixels of drawing space)
+// Convert pointer event to canvas coordinates (CSS pixels of drawing space) [1](https://www.w3schools.com/graphics/game_canvas.asp)[2](https://codesandbox.io/s/canvas-laddergame-gph2wq)
 function getCanvasPos(evt) {
   const rect = canvas.getBoundingClientRect();
   const x = evt.clientX - rect.left;
   const y = evt.clientY - rect.top;
-
-  // scale correction when CSS size != internal drawing size
   const scaleX = (canvas.width / DPR) / rect.width;
   const scaleY = (canvas.height / DPR) / rect.height;
-
   return { x: x * scaleX, y: y * scaleY };
 }
 
-// Distance from point to segment (for hit test)
+// Distance from point to segment (for hit test) [3](https://www.vecteezy.com/free-vector/kids-game-button)
 function distPointToSeg(px, py, ax, ay, bx, by) {
   const abx = bx - ax, aby = by - ay;
   const apx = px - ax, apy = py - ay;
   const ab2 = abx * abx + aby * aby;
   if (ab2 === 0) return Math.hypot(px - ax, py - ay);
-
   let t = (apx * abx + apy * aby) / ab2;
   t = Math.max(0, Math.min(1, t));
   const cx = ax + t * abx;
   const cy = ay + t * aby;
   return Math.hypot(px - cx, py - cy);
 }
-
 function hitTestRung(px, py, rung, tol = RUNG_HIT_TOL) {
   const d = distPointToSeg(px, py, rung.x1, rung.y, rung.x2, rung.y);
   return d <= tol;
@@ -165,10 +155,7 @@ function generateRungs(N, ROWS) {
     for (let c = 0; c < N - 1; c++) {
       if (c === lastPlaced + 1) continue; // avoid adjacent rungs
       const p = (N === 5) ? 0.42 : 0.35;
-      if (Math.random() < p) {
-        row.push(c);
-        lastPlaced = c;
-      }
+      if (Math.random() < p) { row.push(c); lastPlaced = c; }
     }
     rungs.push(row);
   }
@@ -187,13 +174,17 @@ function generateEndLabels(N, heavenIndex) {
 }
 
 // =========================
-// Path trace (for final result) + manual targets (rungs on path)
+// Upward path trace + manual targets
 // =========================
-function tracePath(startCol) {
-  let col = startCol;
-  const pts = [{ x: xOf(col), y: yOf(0) }];
 
-  for (let r = 0; r < state.ROWS; r++) {
+// Trace path traveling UP (start at bottom, end at top)
+function tracePathUp(startCol) {
+  let col = startCol;
+  const { top, bottom } = layout();
+  const pts = [{ x: xOf(col), y: bottom }];
+
+  // go from bottom rows -> top rows (reverse order)
+  for (let r = state.ROWS - 1; r >= 0; r--) {
     const y = yOf(r);
     pts.push({ x: xOf(col), y });
 
@@ -206,17 +197,17 @@ function tracePath(startCol) {
       pts.push({ x: xOf(col), y });
     }
   }
-  const { bottom } = layout();
-  pts.push({ x: xOf(col), y: bottom });
 
+  pts.push({ x: xOf(col), y: top });
   return { endCol: col, pts };
 }
 
-function buildManualTargets(startCol) {
+// Build only the rungs actually on the path (traveling UP)
+function buildManualTargetsUp(startCol) {
   let col = startCol;
   const targets = [];
 
-  for (let r = 0; r < state.ROWS; r++) {
+  for (let r = state.ROWS - 1; r >= 0; r--) {
     const y = yOf(r);
     const row = state.rungs[r];
 
@@ -236,12 +227,10 @@ function buildManualTargets(startCol) {
 }
 
 // =========================
-// Background (cartoon sky, clouds, rainbow)
+// Background (cartoon sky)
 // =========================
 function drawSky() {
   const { w, h } = layout();
-
-  // gradient sky
   const g = ctx.createLinearGradient(0, 0, 0, h);
   g.addColorStop(0, "#b9f3ff");
   g.addColorStop(0.55, "#fff0fb");
@@ -249,7 +238,6 @@ function drawSky() {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 
-  // tiny stars/sparkles
   ctx.save();
   ctx.globalAlpha = 0.35;
   for (let i = 0; i < 26; i++) {
@@ -262,10 +250,7 @@ function drawSky() {
   }
   ctx.restore();
 
-  // rainbow
   drawRainbow(w * 0.77, h * 0.12, 92);
-
-  // clouds
   drawCloud(w * 0.18, h * 0.14, 1.05);
   drawCloud(w * 0.44, h * 0.10, 0.9);
   drawCloud(w * 0.70, h * 0.18, 1.2);
@@ -275,11 +260,9 @@ function drawCloud(cx, cy, s = 1) {
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(s, s);
-
   ctx.fillStyle = "rgba(255,255,255,.92)";
   ctx.strokeStyle = "rgba(36,48,74,.06)";
   ctx.lineWidth = 3;
-
   ctx.beginPath();
   ctx.arc(-40, 0, 22, 0, Math.PI * 2);
   ctx.arc(-15, -12, 28, 0, Math.PI * 2);
@@ -288,7 +271,6 @@ function drawCloud(cx, cy, s = 1) {
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
-
   ctx.restore();
 }
 
@@ -307,7 +289,7 @@ function drawRainbow(cx, cy, r) {
 }
 
 // =========================
-// Ladder drawing
+// Ladder drawing (with swapped labels)
 // =========================
 function drawLadder() {
   const { top, bottom } = layout();
@@ -345,19 +327,7 @@ function drawLadder() {
 function drawLabels() {
   const { top, bottom, w } = layout();
 
-  // top avatars
-  ctx.save();
-  ctx.textAlign = "center";
-  for (let c = 0; c < state.N; c++) {
-    const isSel = c === state.selected;
-    ctx.font = isSel ? "900 16px ui-rounded, system-ui" : "900 14px ui-rounded, system-ui";
-    ctx.fillStyle = isSel ? "#ff4a9a" : "rgba(36,48,74,.85)";
-    const text = AVATARS[c] || `角色${c + 1}`;
-    ctx.fillText(text, xOf(c), top - 22);
-  }
-  ctx.restore();
-
-  // bottom ends
+  // TOP: end labels (Heaven at center)
   ctx.save();
   ctx.textAlign = "center";
   for (let c = 0; c < state.N; c++) {
@@ -365,26 +335,38 @@ function drawLabels() {
     const isHeaven = c === state.heavenIndex;
     ctx.font = isHeaven ? "1000 18px ui-rounded, system-ui" : "900 14px ui-rounded, system-ui";
     ctx.fillStyle = isHeaven ? "#2ad48f" : "rgba(36,48,74,.75)";
-    ctx.fillText(label, xOf(c), bottom + 44);
+    ctx.fillText(label, xOf(c), top - 44);
   }
   ctx.restore();
 
-  // corners hints
+  // BOTTOM: avatars (start)
+  ctx.save();
+  ctx.textAlign = "center";
+  for (let c = 0; c < state.N; c++) {
+    const isSel = c === state.selected;
+    ctx.font = isSel ? "900 16px ui-rounded, system-ui" : "900 14px ui-rounded, system-ui";
+    ctx.fillStyle = isSel ? "#ff4a9a" : "rgba(36,48,74,.85)";
+    const text = AVATARS[c] || `角色${c + 1}`;
+    ctx.fillText(text, xOf(c), bottom + 44);
+  }
+  ctx.restore();
+
+  // corner hints
   ctx.save();
   ctx.textAlign = "left";
   ctx.font = "1000 18px ui-rounded, system-ui";
   ctx.fillStyle = "rgba(36,48,74,.88)";
-  ctx.fillText("起點", 18, 34);
+  ctx.fillText("終點（上方）", 18, 34);
   ctx.font = "900 13px ui-rounded, system-ui";
   ctx.fillStyle = "rgba(90,107,138,.9)";
-  ctx.fillText("選角色 → 出發", 18, 56);
+  ctx.fillText("往上走 → 點橫桿", 18, 56);
   ctx.restore();
 
   ctx.save();
   ctx.textAlign = "right";
   ctx.font = "900 13px ui-rounded, system-ui";
   ctx.fillStyle = "rgba(90,107,138,.9)";
-  ctx.fillText("✨天國永遠在正中間！", w - 18, 56);
+  ctx.fillText("起點在下方（從地上往天國）", w - 18, 56);
   ctx.restore();
 }
 
@@ -401,8 +383,18 @@ function setMessage(html) {
   `;
 }
 
+function syncHintUI() {
+  if (!btnHint) return;
+  btnHint.textContent = state.hintsEnabled ? "💡 提示：開" : "🙈 無提示：開";
+  if (elTip) {
+    elTip.textContent = state.hintsEnabled
+      ? "小提示：星星走到岔路會停住～請點一下橫桿，幫它確認要走的路！"
+      : "無提示模式：星星走到岔路會停住～請自己找出該點哪一根橫桿！";
+  }
+}
+
 // =========================
-// Confetti (when reach heaven)
+// Confetti
 // =========================
 function spawnConfetti() {
   const { w } = layout();
@@ -422,20 +414,16 @@ function spawnConfetti() {
     });
   }
 }
-
 function updateConfetti() {
   const { h } = layout();
   for (const p of state.confetti) {
-    p.x += p.vx;
-    p.y += p.vy;
-    p.rot += p.vr;
+    p.x += p.vx; p.y += p.vy; p.rot += p.vr;
     p.vy += 0.02;
     p.life -= 1;
     if (p.y > h + 30) p.life = 0;
   }
   state.confetti = state.confetti.filter(p => p.life > 0);
 }
-
 function drawConfetti() {
   if (!state.confetti.length) return;
   ctx.save();
@@ -457,7 +445,7 @@ function drawManualOverlay() {
   const m = state.manual;
   if (!m.running) return;
 
-  // 1) Draw traveled path (green)
+  // traveled path
   if (m.pathPts.length >= 2) {
     ctx.save();
     ctx.lineWidth = 12;
@@ -466,17 +454,14 @@ function drawManualOverlay() {
     ctx.strokeStyle = "rgba(42, 212, 143, .62)";
     ctx.beginPath();
     ctx.moveTo(m.pathPts[0].x, m.pathPts[0].y);
-    for (let i = 1; i < m.pathPts.length; i++) {
-      ctx.lineTo(m.pathPts[i].x, m.pathPts[i].y);
-    }
-    // also connect to current marker position (in-progress)
+    for (let i = 1; i < m.pathPts.length; i++) ctx.lineTo(m.pathPts[i].x, m.pathPts[i].y);
     ctx.lineTo(m.marker.x, m.marker.y);
     ctx.stroke();
     ctx.restore();
   }
 
-  // 2) Hint rung pulse while waiting click
-  if (m.waitingClick && m.targetIndex < m.targets.length) {
+  // hint rung (only if enabled)
+  if (state.hintsEnabled && m.waitingClick && m.targetIndex < m.targets.length) {
     const t = m.targets[m.targetIndex];
     const pulse = 0.55 + 0.45 * Math.sin(m.hintT);
 
@@ -489,7 +474,6 @@ function drawManualOverlay() {
     ctx.lineTo(t.x2, t.y);
     ctx.stroke();
 
-    // small arrow hint
     ctx.fillStyle = `rgba(255, 74, 154, ${0.35 + 0.45 * pulse})`;
     ctx.font = "900 18px ui-rounded, system-ui";
     ctx.textAlign = "center";
@@ -497,7 +481,7 @@ function drawManualOverlay() {
     ctx.restore();
   }
 
-  // 3) Marker (star bubble) with small shake on error
+  // marker
   const shakeX = (m.shake ? (Math.random() - 0.5) * m.shake : 0);
   const shakeY = (m.shake ? (Math.random() - 0.5) * m.shake : 0);
 
@@ -516,7 +500,7 @@ function drawManualOverlay() {
   ctx.fillText("★", m.marker.x + shakeX, m.marker.y + shakeY + 5);
   ctx.restore();
 
-  // 4) Confetti
+  // confetti
   if (state.confetti.length) {
     updateConfetti();
     drawConfetti();
@@ -524,7 +508,7 @@ function drawManualOverlay() {
 }
 
 // =========================
-// Main draw
+// Draw
 // =========================
 function draw() {
   resizeCanvas();
@@ -557,34 +541,6 @@ function renderChoices() {
 // =========================
 // New map
 // =========================
-function newMap() {
-  // reset running states
-  stopManualIfRunning();
-
-  // odd columns
-  state.N = ODD_COUNTS[randInt(0, ODD_COUNTS.length - 1)];
-  state.ROWS = randInt(ROWS_RANGE[0], ROWS_RANGE[1]);
-  state.heavenIndex = Math.floor((state.N - 1) / 2);
-
-  // generate
-  state.rungs = generateRungs(state.N, state.ROWS);
-  state.endLabels = generateEndLabels(state.N, state.heavenIndex);
-
-  // clamp selection
-  state.selected = Math.min(state.selected, state.N - 1);
-
-  // clear confetti
-  state.confetti = [];
-
-  renderChoices();
-  draw();
-
-  setMessage(`🎯 選一個角色出發吧！<br/>走到岔路時，請「點一下橫桿」讓星星走過去。<br/>✨ 天國永遠在正中間～`);
-}
-
-// =========================
-// Manual run control
-// =========================
 function stopManualIfRunning() {
   const m = state.manual;
   m.running = false;
@@ -600,6 +556,29 @@ function stopManualIfRunning() {
   btnGo.disabled = false;
 }
 
+function newMap() {
+  stopManualIfRunning();
+
+  state.N = ODD_COUNTS[randInt(0, ODD_COUNTS.length - 1)];
+  state.ROWS = randInt(ROWS_RANGE[0], ROWS_RANGE[1]);
+  state.heavenIndex = Math.floor((state.N - 1) / 2);
+
+  state.rungs = generateRungs(state.N, state.ROWS);
+  state.endLabels = generateEndLabels(state.N, state.heavenIndex);
+
+  state.selected = Math.min(state.selected, state.N - 1);
+  state.confetti = [];
+
+  renderChoices();
+  draw();
+  syncHintUI();
+
+  setMessage(`🎯 從下方出發，往上走到終點（上方）。<br/>走到岔路時，點選橫桿確認你要走的路！<br/>✨ 天國永遠在上方正中間～`);
+}
+
+// =========================
+// Manual run
+// =========================
 function startManualRun() {
   if (state.animating) return;
 
@@ -610,8 +589,8 @@ function startManualRun() {
   const m = state.manual;
   m.running = true;
   m.waitingClick = false;
-  m.phase = "down";
-  m.targets = buildManualTargets(state.selected);
+  m.phase = "up";
+  m.targets = buildManualTargetsUp(state.selected);
   m.targetIndex = 0;
   m.hintT = 0;
   m.shake = 0;
@@ -619,30 +598,25 @@ function startManualRun() {
 
   const { top, bottom } = layout();
   m.marker.x = xOf(state.selected);
-  m.marker.y = top;
-
-  // start polyline
+  m.marker.y = bottom;
   m.pathPts.push({ x: m.marker.x, y: m.marker.y });
 
-  // set first destination: down to first target rung or bottom
   if (m.targets.length) {
     m.to.x = m.marker.x;
     m.to.y = m.targets[0].y;
   } else {
     m.to.x = m.marker.x;
-    m.to.y = bottom;
+    m.to.y = top;
   }
 
-  setMessage(`🚶 出發！<br/>星星走到岔路會停下來～請你點那根橫桿，幫它確認要走的路！`);
-
-  requestAnimationFrame(manualLoop);
+  setMessage(`🚶 出發！<br/>星星往上走～到岔路會停下來，請你點橫桿，確認它要走的路！`);
+  requestAnimationFrame(manualLoop); // [4](https://www.dreamstime.com/game-ui-buttons-mobile-application-interface-elements-cartoon-colorful-design-progress-bar-panel-indicators-flat-video-gaming-image215728083)
 }
 
 function manualLoop() {
   const m = state.manual;
   if (!m.running) return;
 
-  // advance hint/shake
   if (m.waitingClick) {
     m.hintT += 0.08;
     m.shake *= 0.85;
@@ -651,23 +625,19 @@ function manualLoop() {
     return;
   }
 
-  // animate movement towards m.to
   const dx = m.to.x - m.marker.x;
   const dy = m.to.y - m.marker.y;
   const dist = Math.hypot(dx, dy);
 
-  const speed = (m.phase === "cross") ? SPEED_CROSS : SPEED_DOWN;
+  const speed = (m.phase === "cross") ? SPEED_CROSS : SPEED_UP;
 
   if (dist <= speed) {
-    // snap
     m.marker.x = m.to.x;
     m.marker.y = m.to.y;
-
-    // record point when reaching a segment end
     m.pathPts.push({ x: m.marker.x, y: m.marker.y });
 
-    // if we just reached a rung row while going down -> wait for click
-    if (m.phase === "down" && m.targetIndex < m.targets.length && Math.abs(m.marker.y - m.targets[m.targetIndex].y) < 0.5) {
+    // reached a rung row while going UP -> wait click
+    if (m.phase === "up" && m.targetIndex < m.targets.length && Math.abs(m.marker.y - m.targets[m.targetIndex].y) < 0.5) {
       m.waitingClick = true;
       m.phase = "wait";
       m.hintT = 0;
@@ -676,18 +646,18 @@ function manualLoop() {
       return;
     }
 
-    // if we just finished crossing -> continue down to next rung or bottom
+    // finished crossing -> continue up
     if (m.phase === "cross") {
       m.targetIndex += 1;
-      m.phase = "down";
+      m.phase = "up";
 
-      const { bottom } = layout();
+      const { top } = layout();
       if (m.targetIndex < m.targets.length) {
         m.to.x = m.marker.x;
         m.to.y = m.targets[m.targetIndex].y;
       } else {
         m.to.x = m.marker.x;
-        m.to.y = bottom;
+        m.to.y = top;
       }
 
       draw();
@@ -695,9 +665,9 @@ function manualLoop() {
       return;
     }
 
-    // if reached bottom -> finish
-    const { bottom } = layout();
-    if (m.marker.y >= bottom - 0.5) {
+    // reached top -> finish
+    const { top } = layout();
+    if (m.marker.y <= top + 0.5) {
       finishManualRun();
       draw();
       return;
@@ -708,7 +678,6 @@ function manualLoop() {
     return;
   }
 
-  // move step
   m.marker.x += (dx / dist) * speed;
   m.marker.y += (dy / dist) * speed;
 
@@ -718,7 +687,7 @@ function manualLoop() {
 
 function finishManualRun() {
   const m = state.manual;
-  const { endCol } = tracePath(state.selected);
+  const { endCol } = tracePathUp(state.selected);
   const reachedHeaven = (endCol === state.heavenIndex);
 
   if (reachedHeaven) {
@@ -728,7 +697,6 @@ function finishManualRun() {
     setMessage(`🙂 你走到了 <b>${state.endLabels[endCol]}</b>。<br/>再試一次～找到通往天國的那一條路！`);
   }
 
-  // end run
   m.running = false;
   m.waitingClick = false;
   m.phase = "done";
@@ -739,7 +707,7 @@ function finishManualRun() {
 }
 
 // =========================
-// Pointer click handler for manual rung selection
+// Pointer handler: click correct rung
 // =========================
 function onCanvasPointerDown(evt) {
   const m = state.manual;
@@ -752,27 +720,27 @@ function onCanvasPointerDown(evt) {
   const ok = hitTestRung(p.x, p.y, target, RUNG_HIT_TOL);
 
   if (!ok) {
-    // wrong click: shake + gentle reminder
     m.shake = 12;
-    setMessage(`再看一下～星星停在哪裡？<br/>請點它旁邊那根「會發亮」的橫桿！`);
+    // no-hint mode: don't tell too much
+    if (state.hintsEnabled) {
+      setMessage(`再看一下～星星停在哪裡？<br/>請點它旁邊那根「會發亮」的橫桿！`);
+    } else {
+      setMessage(`再試一次～想想看應該點哪一根橫桿？`);
+    }
     return;
   }
 
-  // correct rung clicked -> cross
+  // correct rung
   m.waitingClick = false;
   m.phase = "cross";
 
-  // set crossing destination
   m.to.x = (target.dir === +1) ? target.x2 : target.x1;
   m.to.y = target.y;
 
-  setMessage(`👍 做得好！繼續往下走～`);
-
-  // continue loop
+  setMessage(`👍 做得好！繼續往上走～`);
   requestAnimationFrame(manualLoop);
 }
 
-// Use pointer events for mouse + touch
 canvas.addEventListener("pointerdown", onCanvasPointerDown);
 
 // =========================
@@ -785,6 +753,23 @@ btnNew.addEventListener("click", () => {
 
 btnGo.addEventListener("click", () => {
   startManualRun();
+});
+
+if (btnHint) {
+  btnHint.addEventListener("click", () => {
+    state.hintsEnabled = !state.hintsEnabled;
+    syncHintUI();
+    draw();
+  });
+}
+
+// keyboard shortcut: H toggle hints
+window.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() === "h") {
+    state.hintsEnabled = !state.hintsEnabled;
+    syncHintUI();
+    draw();
+  }
 });
 
 window.addEventListener("resize", () => draw());

@@ -182,3 +182,9 @@ canvas{
   font-weight: 800;
   text-align: center;
 }
+
+/* --- add below at end of src/style.css --- */
+.btn-tertiary{
+  background: linear-gradient(180deg, #fff2a6, #ffd166);
+  color: #5a3b00;
+}

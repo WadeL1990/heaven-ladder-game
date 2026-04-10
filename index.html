@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>爬梯圖：去天國的路</title>
-  <meta name="description" content="兒童主日學互動網頁遊戲：爬梯圖（鬼腳圖），透過點選橫桿確認路徑，明白通往天國的道路只有一條。" />
+  <meta name="description" content="兒童主日學互動網頁遊戲：爬梯圖（鬼腳圖），起點在下方，透過點選橫桿確認路徑，明白通往天國的道路只有一條。" />
   <link rel="stylesheet" href="./src/style.css" />
 </head>
 
@@ -16,7 +16,7 @@
         <div class="titles">
           <h1>爬梯圖：去天國的路</h1>
           <p>
-            選一個角色出發吧！走到岔路時，<b>點選橫桿</b>，一步一步確認你走的路。
+            <b>起點在下方</b>，<b>終點在上方</b>。走到岔路時點選橫桿，確認你走的路。
             只有一條路會到 <b>✨天國</b>。
           </p>
         </div>
@@ -24,16 +24,17 @@
 
       <div class="actions">
         <button id="btnNew" class="btn btn-secondary" aria-label="換一張新地圖">🗺️ 換一張新地圖</button>
+        <button id="btnHint" class="btn btn-tertiary" aria-label="切換提示模式">💡 提示：開</button>
         <button id="btnGo" class="btn btn-primary" aria-label="出發走走看">🚶 出發！走走看</button>
       </div>
     </header>
 
     <main class="card">
       <section class="picker">
-        <div class="pickerTitle">選擇起點角色：</div>
+        <div class="pickerTitle">選擇起點角色（下方）：</div>
         <div id="choices" class="chips" role="list"></div>
-        <div class="tip">
-          小提示：星星走到岔路會停住～請點一下「會發亮」的橫桿，幫它確認要走的路！
+        <div class="tip" id="tip">
+          小提示：星星走到岔路會停住～請點一下橫桿，幫它確認要走的路！
         </div>
       </section>
 
@@ -44,7 +45,7 @@
       <section class="message" id="message">
         <div class="messageTitle">🎯 今天的挑戰</div>
         <div class="messageBody">
-          找到通往 <b>✨天國</b> 的那條路！<br/>
+          從下方出發，找到通往 <b>✨天國</b> 的那條路！<br/>
           <span class="verse">主題經文：使徒行傳 1:1–11（耶穌升天、應許聖靈、將來再來）</span>
         </div>
       </section>
