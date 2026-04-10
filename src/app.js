@@ -363,6 +363,33 @@ function drawStartAndEndIcons() {
   ctx.restore();
 }
 
+function drawTeachingHint() {
+  const m = state.manual;
+  if (!m.running || !m.waitingClick) return;
+
+  const cx = m.marker.x;
+  const cy = m.marker.y - 24;
+
+  ctx.save();
+  ctx.font = "14px ui-rounded, system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+
+  // 泡泡
+  ctx.fillStyle = "rgba(255,255,255,.92)";
+  ctx.strokeStyle = "rgba(255,74,154,.6)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(cx - 90, cy - 28, 180, 26, 10);
+  ctx.fill(); ctx.stroke();
+
+  // 文字
+  ctx.fillStyle = "#24304a";
+  ctx.fillText("👉 請點選正確的橫桿", cx, cy - 6);
+
+  ctx.restore();
+}
+
 function draw(){
   resizeCanvas();
   drawSky();
@@ -371,6 +398,7 @@ function draw(){
   drawMarker();
   drawLabels();
   drawStartAndEndIcons();
+  drawTeachingHint();
 }
 
 /* ===============================
@@ -447,7 +475,14 @@ function finish(){
   state.animating = false;
   animationRunning = false;
 
+  // ✅ 停頓300ms再顯示結果
+  setTimeout(showResultDialog, 300);
+}
+function showResultDiaglog(){
+    
+
   // ✅ 判斷是否到達天國
+  const m = state.manual;
   const reachedHeaven = (m.endCol === state.heavenIndex);
   const endLabel = state.endLabels[m.endCol] || "未知的地方";
 
@@ -495,7 +530,12 @@ canvas.addEventListener("pointerdown",e=>{
   if(!m.running||!m.waitingClick) return;
   const t=m.targets[m.targetIndex];
   const pos=getCanvasPos(e);
-  if(!hitTestRung(pos.x,pos.y,t)) return;
+  if(!hitTestRung(pos.x,pos.y,t)) {
+  m.shake = 16;
+  m.wrongFlash = 1.2;
+  draw()
+  return;
+  }
 
   m.waitingClick=false;
   m.phase="cross";
