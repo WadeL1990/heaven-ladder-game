@@ -45,8 +45,9 @@ const PADDING = { top: 96, bottom: 110, left: 96, right: 96 };
 const LINE_WIDTH = 10;
 const RUNG_WIDTH = 10;
 
-const SPEED_UP = 4.0;
-const SPEED_CROSS = 5.2;
+const SPEED_UP = 2.6;
+const SPEED_CROSS = 3.4;
+
 const RUNG_HIT_TOL = 18;
 
 const DIFFICULTY_CONFIG = {
