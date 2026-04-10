@@ -28,6 +28,10 @@ const dialogBody = document.getElementById("dialogBody");
 const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
 const AVATARS = ["🐑 小羊", "🐟 小魚", "🕯️ 小燈", "🍇 葡萄", "🧡 愛心"];
+function avatarEmoji(i){
+    // AVATARS[i]形如"🐑小羊"→取出"🐑"
+    return (AVATARS[i] || "").split(" ")[0] || "❓";
+}
 const OTHER_ENDS_POOL = ["🎮 只想玩", "🍬 只想吃", "😴 只想睡", "😡 愛生氣", "😎 愛炫耀"];
 
 const PADDING = { top: 96, bottom: 104, left: 96, right: 96 };
@@ -83,7 +87,7 @@ function renderChoices(){
   for(let i=0;i<state.N;i++){
     const chip = document.createElement("div");
     chip.className = "chip" + (i===state.selected?" active":"");
-    chip.textContent = AVATARS[i];
+    chip.textContent = avatarEmoji[i];
     chip.onclick = ()=>{
       if(state.animating) return;
       state.selected = i;
@@ -238,15 +242,35 @@ function draw(){
 }
 
 function drawMarker(){
-  const m=state.manual;
+  const m = state.manual;
   if(!m.running) return;
-  ctx.fillStyle="white";
+
+  const shake = m.shake || 0;
+  const sx = shake ? (Math.random() - 0.5) * shake : 0;
+  const sy = shake ? (Math.random() - 0.5) * shake : 0;
+
+  const emoji = avatarEmoji(state.selected); // ✅ 同步角色
+
+  // 泡泡底
+  ctx.save();
+  ctx.fillStyle = "rgba(255,255,255,.92)";
+  ctx.strokeStyle = "rgba(255,74,154,.65)";
+  ctx.lineWidth = 5;
   ctx.beginPath();
-  ctx.arc(m.marker.x,m.marker.y,11,0,Math.PI*2);
+  ctx.arc(m.marker.x + sx, m.marker.y + sy, 14, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle="#ff4a9a";
   ctx.stroke();
+
+  // 角色 emoji（取代 ★）
+  ctx.font = "20px ui-rounded, system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#24304a";
+  ctx.fillText(emoji, m.marker.x + sx, m.marker.y + sy + 1);
+
+  ctx.restore();
 }
+
 
 /* ===============================
    Manual Run
