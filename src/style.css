@@ -270,3 +270,18 @@ canvas{
   padding: 12px 14px 14px 14px;
   justify-content: flex-end;
 }
+
+.difficulty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.difficulty select {
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 2px solid rgba(36,48,74,.25);
+  font-weight: 800;
+  background: #fff;
+}
