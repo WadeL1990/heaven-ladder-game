@@ -1,6 +1,7 @@
 /* ===============================
-   Heaven Ladder Game – Final
+   Heaven Ladder Game – Final FIXED
    Manual play + Difficulty UI
+   ✅ WITH Character Selection
    =============================== */
 
 const canvas = document.getElementById("game");
@@ -15,15 +16,11 @@ const btnGo = document.getElementById("btnGo");
 const btnHint = document.getElementById("btnHint");
 const difficultySelect = document.getElementById("difficultySelect");
 
-/* dialog (end-only feedback) */
+/* dialog */
 const resultDialog = document.getElementById("resultDialog");
 const dialogIcon = document.getElementById("dialogIcon");
 const dialogTitle = document.getElementById("dialogTitle");
-const dialogDesc = document.getElementById("dialogDesc");
 const dialogBody = document.getElementById("dialogBody");
-const dialogClose = document.getElementById("dialogClose");
-const dialogReplay = document.getElementById("dialogReplay");
-const dialogNewMap = document.getElementById("dialogNewMap");
 
 /* ===============================
    Config
@@ -40,7 +37,6 @@ const SPEED_UP = 3.6;
 const SPEED_CROSS = 4.8;
 const RUNG_HIT_TOL = 16;
 
-/* ✅ Difficulty table (UI controlled) */
 const DIFFICULTY_CONFIG = {
   easy:   { rows: [10, 14], p: 0.36 },
   normal: { rows: [18, 22], p: 0.52 },
@@ -58,9 +54,8 @@ let state = {
   rungs: [],
   endLabels: [],
   heavenIndex: 2,
-  hintsEnabled: true,
   animating: false,
-  confetti: [],
+  hintsEnabled: true,
   manual: {
     running: false,
     waitingClick: false,
@@ -68,17 +63,36 @@ let state = {
     targetIndex: 0,
     marker: { x: 0, y: 0 },
     to: { x: 0, y: 0 },
-    phase: "idle",
-    hintT: 0,
-    shake: 0
+    phase: "idle"
   }
 };
 
 /* ===============================
    Utility
    =============================== */
-function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
-function shuffle(a){ return [...a].sort(()=>Math.random()-0.5); }
+const randInt = (a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+const shuffle = a=>[...a].sort(()=>Math.random()-0.5);
+
+/* ===============================
+   ✅ Character Selection
+   =============================== */
+function renderChoices(){
+  if(!elChoices) return;
+  elChoices.innerHTML = "";
+
+  for(let i=0;i<state.N;i++){
+    const chip = document.createElement("div");
+    chip.className = "chip" + (i===state.selected?" active":"");
+    chip.textContent = AVATARS[i];
+    chip.onclick = ()=>{
+      if(state.animating) return;
+      state.selected = i;
+      renderChoices();
+      draw();
+    };
+    elChoices.appendChild(chip);
+  }
+}
 
 /* ===============================
    Layout
@@ -95,28 +109,27 @@ function layout(){
   const w = canvas.width/DPR, h = canvas.height/DPR;
   return {
     w,h,
-    left: PADDING.left,
-    right: w-PADDING.right,
-    top: PADDING.top,
-    bottom: h-PADDING.bottom,
-    dx: (w-PADDING.left-PADDING.right)/(state.N-1),
-    dy: (h-PADDING.top-PADDING.bottom)/(state.ROWS-1)
+    left:PADDING.left,
+    right:w-PADDING.right,
+    top:PADDING.top,
+    bottom:h-PADDING.bottom,
+    dx:(w-PADDING.left-PADDING.right)/(state.N-1),
+    dy:(h-PADDING.top-PADDING.bottom)/(state.ROWS-1)
   };
 }
-const xOf = c => layout().left + c*layout().dx;
-const yOf = r => layout().top  + r*layout().dy;
+const xOf=c=>layout().left+c*layout().dx;
+const yOf=r=>layout().top+r*layout().dy;
 
 /* ===============================
-   Rungs generation
+   Rungs
    =============================== */
 function generateRungs(){
-  const { p } = DIFFICULTY_CONFIG[state.difficulty];
-  const rows = [];
+  const {p}=DIFFICULTY_CONFIG[state.difficulty];
+  const rows=[];
   for(let r=0;r<state.ROWS;r++){
-    const row=[];
-    let last=-99;
+    const row=[]; let last=-99;
     for(let c=0;c<state.N-1;c++){
-      if(c===last+1)continue;
+      if(c===last+1) continue;
       if(Math.random()<p){ row.push(c); last=c; }
     }
     rows.push(row);
@@ -125,17 +138,17 @@ function generateRungs(){
 }
 
 /* ===============================
-   Path helpers (UPWARD)
+   Manual Path
    =============================== */
 function buildTargetsUp(start){
   let col=start, list=[];
   for(let r=state.ROWS-1;r>=0;r--){
-    const y=yOf(r), row=state.rungs[r];
+    const row=state.rungs[r];
     if(row.includes(col)){
-      list.push({y,x1:xOf(col),x2:xOf(col+1),dir:1});
+      list.push({y:yOf(r),x1:xOf(col),x2:xOf(col+1),dir:1});
       col++;
     }else if(row.includes(col-1)){
-      list.push({y,x1:xOf(col-1),x2:xOf(col),dir:-1});
+      list.push({y:yOf(r),x1:xOf(col-1),x2:xOf(col),dir:-1});
       col--;
     }
   }
@@ -150,10 +163,8 @@ function draw(){
   const {top,bottom}=layout();
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  /* ladder lines */
   ctx.strokeStyle="#2a3b63";
   ctx.lineWidth=LINE_WIDTH;
-  ctx.lineCap="round";
   for(let c=0;c<state.N;c++){
     ctx.beginPath();
     ctx.moveTo(xOf(c),top);
@@ -161,7 +172,6 @@ function draw(){
     ctx.stroke();
   }
 
-  /* rungs */
   ctx.strokeStyle="#32c6ff";
   ctx.lineWidth=RUNG_WIDTH;
   for(let r=0;r<state.ROWS;r++){
@@ -173,11 +183,10 @@ function draw(){
     }
   }
 
-  /* labels */
   ctx.textAlign="center";
   for(let c=0;c<state.N;c++){
-    ctx.fillStyle = c===state.heavenIndex ? "#2ad48f" : "#24304a";
-    ctx.font = c===state.heavenIndex ? "900 18px ui-rounded" : "700 14px ui-rounded";
+    ctx.fillStyle=c===state.heavenIndex?"#2ad48f":"#24304a";
+    ctx.font="900 16px ui-rounded";
     ctx.fillText(state.endLabels[c],xOf(c),top-44);
 
     ctx.fillStyle=c===state.selected?"#ff4a9a":"#24304a";
@@ -188,12 +197,9 @@ function draw(){
   drawMarker();
 }
 
-/* ===============================
-   Marker + Manual logic
-   =============================== */
 function drawMarker(){
   const m=state.manual;
-  if(!m.running)return;
+  if(!m.running) return;
   ctx.fillStyle="white";
   ctx.beginPath();
   ctx.arc(m.marker.x,m.marker.y,11,0,Math.PI*2);
@@ -202,34 +208,36 @@ function drawMarker(){
   ctx.stroke();
 }
 
+/* ===============================
+   Manual Run
+   =============================== */
 function startManual(){
-  if(state.animating)return;
+  if(state.animating) return;
   state.animating=true;
   const m=state.manual;
   m.running=true;
   m.targets=buildTargetsUp(state.selected);
   m.targetIndex=0;
   m.marker={x:xOf(state.selected),y:layout().bottom};
-  if(m.targets.length)m.to={x:m.marker.x,y:m.targets[0].y};
+  if(m.targets.length) m.to={x:m.marker.x,y:m.targets[0].y};
   requestAnimationFrame(loop);
 }
 
 function loop(){
   const m=state.manual;
-  if(!m.running)return;
-  if(m.waitingClick){
-    draw(); requestAnimationFrame(loop); return;
-  }
+  if(!m.running) return;
+  if(m.waitingClick){ draw(); requestAnimationFrame(loop); return; }
+
   const dx=m.to.x-m.marker.x, dy=m.to.y-m.marker.y;
   const d=Math.hypot(dx,dy);
   const speed=m.phase==="cross"?SPEED_CROSS:SPEED_UP;
+
   if(d<=speed){
     m.marker={...m.to};
     if(m.targetIndex<m.targets.length){
       m.waitingClick=true; draw(); return;
-    }else{
-      finish(); return;
-    }
+    }else finish();
+    return;
   }
   m.marker.x+=dx/d*speed;
   m.marker.y+=dy/d*speed;
@@ -237,16 +245,15 @@ function loop(){
 }
 
 /* ===============================
-   Finish + Dialog
+   Finish
    =============================== */
 function finish(){
   state.manual.running=false;
   state.animating=false;
-  const ok = true; // judge by heavenIndex if needed
   if(resultDialog){
     dialogIcon.textContent="🎉";
     dialogTitle.textContent="完成了！";
-    dialogBody.innerHTML="你已經完成這一次的選擇。<br/>「耶穌怎樣往天上去，祂還要怎樣來。」（徒 1:11）";
+    dialogBody.innerHTML="你已完成這一次的選擇。<br/>（徒 1:11）";
     resultDialog.showModal();
   }
 }
@@ -254,24 +261,22 @@ function finish(){
 /* ===============================
    Events
    =============================== */
-canvas.addEventListener("pointerdown",e=>{
+canvas.addEventListener("pointerdown",()=>{
   const m=state.manual;
-  if(!m.waitingClick)return;
-  m.waitingClick=false;
+  if(!m.waitingClick) return;
   const t=m.targets[m.targetIndex++];
+  m.waitingClick=false;
   m.phase="cross";
   m.to={x:t.dir>0?t.x2:t.x1,y:t.y};
   requestAnimationFrame(loop);
 });
 
-btnGo.onclick=()=>startManual();
-btnNew.onclick=()=>newMap();
-
+btnGo.onclick=startManual;
+btnNew.onclick=newMap;
 btnHint.onclick=()=>{
   state.hintsEnabled=!state.hintsEnabled;
   btnHint.textContent=state.hintsEnabled?"💡 提示：開":"🙈 無提示：開";
 };
-
 difficultySelect.onchange=()=>{
   state.difficulty=difficultySelect.value;
   newMap();
@@ -286,6 +291,8 @@ function newMap(){
   state.rungs=generateRungs();
   state.endLabels=shuffle(OTHER_ENDS_POOL).slice(0,state.N)
     .map((v,i)=>i===state.heavenIndex?"✨ 天國":v);
+
+  renderChoices();   // ✅ 關鍵：角色選擇在這裡生成
   draw();
 }
 
@@ -293,3 +300,4 @@ function newMap(){
    Init
    =============================== */
 newMap();
+``
