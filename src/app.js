@@ -1,5 +1,12 @@
 /* =====================================================
-   Heaven Ladder Game – FINAL STABLE ANIMATION VERSION
+   Heaven Ladder Game – FIXED VERSION
+   修正項目：
+   1. showResultDiaglog → showResultDialog（拼寫錯誤）
+   2. 整合三次重複的 showModal() 呼叫
+   3. 移除 drawLabels() 與 drawStartAndEndIcons() 重複繪製 emoji
+   4. loop() 在 waitingClick 時暫停 RAF，等 pointerdown 再重啟
+   5. resizeCanvas() 移出 draw()，改由 resize 事件觸發
+   6. RUNG_HIT_TOL 從 18 調高至 30（行動裝置友善）
    ===================================================== */
 
 const canvas = document.getElementById("game");
@@ -27,8 +34,8 @@ const dialogNewMap = document.getElementById("dialogNewMap");
 /* ===============================
    Global animation lock
    =============================== */
-let animationRunning = false; // ⭐ 核心修正：只允許一個 loop
-let rafID = null; // 存目前唯一的requestAnimationFramme
+let animationRunning = false;
+let rafID = null;
 
 /* ===============================
    Config
@@ -45,11 +52,11 @@ const PADDING = { top: 96, bottom: 110, left: 96, right: 96 };
 const LINE_WIDTH = 10;
 const RUNG_WIDTH = 10;
 
-// ✅ 調慢後的穩定速度
 const SPEED_UP = 2.6;
 const SPEED_CROSS = 3.4;
 
-const RUNG_HIT_TOL = 18;
+// ✅ 修正5：提高觸控命中容差，行動裝置更好點擊
+const RUNG_HIT_TOL = 30;
 
 const DIFFICULTY_CONFIG = {
   easy:   { rows: [10, 14], p: 0.36 },
@@ -74,7 +81,7 @@ let state = {
   manual: {
     running: false,
     waitingClick: false,
-    phase: "idle",      // up | wait | cross
+    phase: "idle",
     targets: [],
     targetIndex: 0,
     endCol: 0,
@@ -90,113 +97,119 @@ let state = {
 /* ===============================
    Utilities
    =============================== */
-const randInt = (a,b)=>Math.floor(Math.random()*(b-a+1))+a;
-const shuffle = a=>[...a].sort(()=>Math.random()-0.5);
-const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const randInt = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+const shuffle = a => [...a].sort(() => Math.random() - 0.5);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-const avatarEmoji = i => (AVATARS[i]||"").split(" ")[0];
-const avatarName  = i => (AVATARS[i]||"").split(" ").slice(1).join(" ");
+const avatarEmoji = i => (AVATARS[i] || "").split(" ")[0];
+const avatarName  = i => (AVATARS[i] || "").split(" ").slice(1).join(" ");
 
-function resizeCanvas(){
+// ✅ 修正4：resizeCanvas 獨立出來，不在 draw() 裡每幀呼叫
+function resizeCanvas() {
   const w = canvas.clientWidth || 960;
-  const h = Math.round(w*0.68);
-  canvas.width = w*DPR;
-  canvas.height = h*DPR;
-  canvas.style.height = h+"px";
-  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const h = Math.round(w * 0.68);
+  canvas.width = w * DPR;
+  canvas.height = h * DPR;
+  canvas.style.height = h + "px";
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
 
-function layout(){
-  const w = canvas.width/DPR, h = canvas.height/DPR;
-  const left=PADDING.left, right=w-PADDING.right;
-  const top=PADDING.top, bottom=h-PADDING.bottom;
+window.addEventListener("resize", () => {
+  resizeCanvas();
+  draw();
+});
+
+function layout() {
+  const w = canvas.width / DPR, h = canvas.height / DPR;
+  const left = PADDING.left, right = w - PADDING.right;
+  const top = PADDING.top, bottom = h - PADDING.bottom;
   return {
-    w,h, left,right, top,bottom,
-    dx:(right-left)/(state.N-1),
-    dy:(bottom-top)/(state.ROWS-1)
+    w, h, left, right, top, bottom,
+    dx: (right - left) / (state.N - 1),
+    dy: (bottom - top) / (state.ROWS - 1)
   };
 }
-const xOf=c=>layout().left+c*layout().dx;
-const yOf=r=>layout().top+r*layout().dy;
+const xOf = c => layout().left + c * layout().dx;
+const yOf = r => layout().top + r * layout().dy;
 
 /* ===============================
    Hit test helpers
    =============================== */
-function getCanvasPos(evt){
+function getCanvasPos(evt) {
   const rect = canvas.getBoundingClientRect();
   return {
-    x:(evt.clientX-rect.left)*(canvas.width/DPR)/rect.width,
-    y:(evt.clientY-rect.top)*(canvas.height/DPR)/rect.height
+    x: (evt.clientX - rect.left) * (canvas.width / DPR) / rect.width,
+    y: (evt.clientY - rect.top) * (canvas.height / DPR) / rect.height
   };
 }
 
-function distPointToSeg(px,py,ax,ay,bx,by){
-  const abx=bx-ax, aby=by-ay;
-  const apx=px-ax, apy=py-ay;
-  const ab2=abx*abx+aby*aby;
-  if(!ab2) return Math.hypot(px-ax,py-ay);
-  let t=(apx*abx+apy*aby)/ab2;
-  t=clamp(t,0,1);
-  const cx=ax+t*abx, cy=ay+t*aby;
-  return Math.hypot(px-cx,py-cy);
+function distPointToSeg(px, py, ax, ay, bx, by) {
+  const abx = bx - ax, aby = by - ay;
+  const apx = px - ax, apy = py - ay;
+  const ab2 = abx * abx + aby * aby;
+  if (!ab2) return Math.hypot(px - ax, py - ay);
+  let t = (apx * abx + apy * aby) / ab2;
+  t = clamp(t, 0, 1);
+  const cx = ax + t * abx, cy = ay + t * aby;
+  return Math.hypot(px - cx, py - cy);
 }
-const hitTestRung=(px,py,t)=>distPointToSeg(px,py,t.x1,t.y,t.x2,t.y)<=RUNG_HIT_TOL;
+const hitTestRung = (px, py, t) => distPointToSeg(px, py, t.x1, t.y, t.x2, t.y) <= RUNG_HIT_TOL;
 
 /* ===============================
    Ladder generation
    =============================== */
-function generateRungs(){
-  const {p}=DIFFICULTY_CONFIG[state.difficulty];
-  const rows=[];
-  for(let r=0;r<state.ROWS;r++){
-    const row=[]; let last=-99;
-    for(let c=0;c<state.N-1;c++){
-      if(c===last+1) continue;
-      if(Math.random()<p){ row.push(c); last=c; }
+function generateRungs() {
+  const { p } = DIFFICULTY_CONFIG[state.difficulty];
+  const rows = [];
+  for (let r = 0; r < state.ROWS; r++) {
+    const row = []; let last = -99;
+    for (let c = 0; c < state.N - 1; c++) {
+      if (c === last + 1) continue;
+      if (Math.random() < p) { row.push(c); last = c; }
     }
     rows.push(row);
   }
   return rows;
 }
 
-function simulateUp(start){
-  let col=start, targets=[];
-  for(let r=state.ROWS-1;r>=0;r--){
-    const row=state.rungs[r], y=yOf(r);
-    if(row.includes(col)){
-      targets.push({y,x1:xOf(col),x2:xOf(col+1),dir:1}); col++;
-    }else if(row.includes(col-1)){
-      targets.push({y,x1:xOf(col-1),x2:xOf(col),dir:-1}); col--;
+function simulateUp(start) {
+  let col = start, targets = [];
+  for (let r = state.ROWS - 1; r >= 0; r--) {
+    const row = state.rungs[r], y = yOf(r);
+    if (row.includes(col)) {
+      targets.push({ y, x1: xOf(col), x2: xOf(col + 1), dir: 1 }); col++;
+    } else if (row.includes(col - 1)) {
+      targets.push({ y, x1: xOf(col - 1), x2: xOf(col), dir: -1 }); col--;
     }
   }
-  return {targets,endCol:col};
+  return { targets, endCol: col };
 }
 
 /* ===============================
    UI: avatar choices
    =============================== */
-function renderChoices(){
-  elChoices.innerHTML="";
-  for(let i=0;i<state.N;i++){
-    const chip=document.createElement("div");
-    chip.className="chip"+(i===state.selected?" active":"");
-    chip.style.display="flex";
-    chip.style.alignItems="center";
-    chip.style.gap="8px";
-    chip.style.fontFamily=EMOJI_FONT;
+function renderChoices() {
+  elChoices.innerHTML = "";
+  for (let i = 0; i < state.N; i++) {
+    const chip = document.createElement("div");
+    chip.className = "chip" + (i === state.selected ? " active" : "");
+    chip.style.display = "flex";
+    chip.style.alignItems = "center";
+    chip.style.gap = "8px";
+    chip.style.fontFamily = EMOJI_FONT;
 
-    const e=document.createElement("span");
-    e.textContent=avatarEmoji(i);
-    e.style.fontSize="18px";
+    const e = document.createElement("span");
+    e.textContent = avatarEmoji(i);
+    e.style.fontSize = "18px";
 
-    const n=document.createElement("span");
-    n.textContent=avatarName(i);
-    n.style.fontWeight="900";
+    const n = document.createElement("span");
+    n.textContent = avatarName(i);
+    n.style.fontWeight = "900";
 
-    chip.append(e,n);
-    chip.onclick=()=>{
-      if(state.animating) return;
-      state.selected=i;
+    chip.append(e, n);
+    chip.onclick = () => {
+      if (state.animating) return;
+      state.selected = i;
       renderChoices();
       draw();
     };
@@ -204,104 +217,109 @@ function renderChoices(){
   }
 }
 
-function syncHintUI(){
-  btnHint.textContent=state.hintsEnabled?"💡 提示：開":"🙈 無提示：開";
-  elTip.textContent=state.hintsEnabled
-    ?"提示模式：正確橫桿會發亮"
-    :"無提示模式";
+function syncHintUI() {
+  btnHint.textContent = state.hintsEnabled ? "💡 提示：開" : "🙈 無提示：開";
+  elTip.textContent = state.hintsEnabled
+    ? "提示模式：正確橫桿會發亮"
+    : "無提示模式";
 }
 
 /* ===============================
    Drawing
    =============================== */
-function drawSky(){
-  const {w,h}=layout();
-  const g=ctx.createLinearGradient(0,0,0,h);
-  g.addColorStop(0,"#b9f3ff");
-  g.addColorStop(1,"#fff");
-  ctx.fillStyle=g;
-  ctx.fillRect(0,0,w,h);
+function drawSky() {
+  const { w, h } = layout();
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, "#b9f3ff");
+  g.addColorStop(1, "#fff");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
 }
 
-function drawLadder(){
-  const {top,bottom}=layout();
-  ctx.lineCap="round";
+function drawLadder() {
+  const { top, bottom } = layout();
+  ctx.lineCap = "round";
 
-  ctx.strokeStyle="#2a3b63";
-  ctx.lineWidth=LINE_WIDTH;
-  for(let c=0;c<state.N;c++){
+  ctx.strokeStyle = "#2a3b63";
+  ctx.lineWidth = LINE_WIDTH;
+  for (let c = 0; c < state.N; c++) {
     ctx.beginPath();
-    ctx.moveTo(xOf(c),top);
-    ctx.lineTo(xOf(c),bottom);
+    ctx.moveTo(xOf(c), top);
+    ctx.lineTo(xOf(c), bottom);
     ctx.stroke();
   }
 
-  ctx.strokeStyle="#32c6ff";
-  ctx.lineWidth=RUNG_WIDTH;
-  for(let r=0;r<state.ROWS;r++){
-    for(const c of state.rungs[r]){
+  ctx.strokeStyle = "#32c6ff";
+  ctx.lineWidth = RUNG_WIDTH;
+  for (let r = 0; r < state.ROWS; r++) {
+    for (const c of state.rungs[r]) {
       ctx.beginPath();
-      ctx.moveTo(xOf(c),yOf(r));
-      ctx.lineTo(xOf(c+1),yOf(r));
+      ctx.moveTo(xOf(c), yOf(r));
+      ctx.lineTo(xOf(c + 1), yOf(r));
       ctx.stroke();
     }
   }
 }
 
-function drawPath(){
-  const m=state.manual;
-  if(!m.running||!m.pathPts.length) return;
-  ctx.strokeStyle="rgba(255,74,154,.75)";
-  ctx.lineWidth=10;
-  ctx.lineJoin=ctx.lineCap="round";
+function drawPath() {
+  const m = state.manual;
+  if (!m.running || !m.pathPts.length) return;
+  ctx.strokeStyle = "rgba(255,74,154,.75)";
+  ctx.lineWidth = 10;
+  ctx.lineJoin = ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(m.pathPts[0].x,m.pathPts[0].y);
-  for(const p of m.pathPts) ctx.lineTo(p.x,p.y);
-  ctx.lineTo(m.marker.x,m.marker.y);
+  ctx.moveTo(m.pathPts[0].x, m.pathPts[0].y);
+  for (const p of m.pathPts) ctx.lineTo(p.x, p.y);
+  ctx.lineTo(m.marker.x, m.marker.y);
   ctx.stroke();
 }
 
-function drawMarker(){
-  const m=state.manual;
-  if(!m.running) return;
-  const cx=m.marker.x, cy=m.marker.y;
+function drawMarker() {
+  const m = state.manual;
+  if (!m.running) return;
+  const cx = m.marker.x, cy = m.marker.y;
 
-  ctx.fillStyle="#fff";
-  ctx.strokeStyle="rgba(255,74,154,.8)";
-  ctx.lineWidth=4;
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = "rgba(255,74,154,.8)";
+  ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.roundRect(cx-17,cy-17,34,34,8);
+  ctx.roundRect(cx - 17, cy - 17, 34, 34, 8);
   ctx.fill(); ctx.stroke();
 
-  ctx.font=`20px ${EMOJI_FONT}`;
-  ctx.textAlign="center";
-  ctx.textBaseline="middle";
-  ctx.fillText(avatarEmoji(state.selected),cx,cy+1);
+  ctx.font = `20px ${EMOJI_FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(avatarEmoji(state.selected), cx, cy + 1);
 }
 
+// ✅ 修正3：drawLabels 只畫文字，不再重複畫 emoji（emoji 由 drawStartAndEndIcons 負責）
 function drawLabels() {
   const { top, bottom } = layout();
 
   ctx.save();
   ctx.textAlign = "center";
 
-  /* ===== 終點文字 ===== */
+  // 終點文字（名稱，不含 emoji）
   for (let c = 0; c < state.N; c++) {
     const isHeaven = c === state.heavenIndex;
+    const label = state.endLabels[c] || "";
+    // 取文字部分（去掉開頭 emoji）
+    const textOnly = label.replace(/^\S+\s*/, "");
+
     ctx.font = isHeaven
       ? "900 18px ui-rounded, system-ui"
       : "800 14px ui-rounded, system-ui";
     ctx.fillStyle = isHeaven ? "#2ad48f" : "rgba(36,48,74,.8)";
-    ctx.fillText(state.endLabels[c], xOf(c), top - 44);
+    ctx.fillText(textOnly, xOf(c), top - 44);
   }
 
-  /* ===== 起點角色（emoji） ===== */
-  ctx.font = `18px ${EMOJI_FONT}`;
+  // 起點角色名稱（文字，不含 emoji；emoji 由 drawStartAndEndIcons 畫）
+  ctx.font = "800 13px ui-rounded, system-ui";
   for (let c = 0; c < state.N; c++) {
     ctx.fillStyle = c === state.selected
       ? "#ff4a9a"
       : "rgba(36,48,74,.85)";
-    ctx.fillText(avatarEmoji(c), xOf(c), bottom + 44);
+    ctx.fillText(avatarName(c), xOf(c), bottom + 86);
   }
 
   ctx.restore();
@@ -320,41 +338,36 @@ function roundRect(ctx, x, y, w, h, r, fill, stroke) {
   if (stroke) ctx.stroke();
 }
 
+// ✅ 修正3：此函式負責所有 emoji 繪製（上方終點 emoji、下方角色 emoji），不與 drawLabels 重複
 function drawStartAndEndIcons() {
   const { top, bottom } = layout();
 
   ctx.save();
-
-  /* ===== 終點（上方）icon ===== */
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = `20px ${EMOJI_FONT}`;
 
+  // 終點（上方）emoji
+  ctx.font = `20px ${EMOJI_FONT}`;
   for (let c = 0; c < state.N; c++) {
     const label = state.endLabels[c] || "";
-    const emoji = label.split(" ")[0]; // 取 "✨" 或其他 emoji
-
-    // 畫在終點文字的「正中間上方」
+    const emoji = label.split(" ")[0];
     ctx.fillText(emoji, xOf(c), top - 68);
   }
 
-  /* ===== 起點（下方）icon ===== */
+  // 起點（下方）角色 emoji + 頭像框
   const size = 28;
   const radius = 7;
 
   for (let c = 0; c < state.N; c++) {
     const cx = xOf(c);
-    const cy = bottom + 72;
+    const cy = bottom + 56;
 
-    // 圓角頭像框
     ctx.fillStyle = "rgba(255,255,255,.95)";
     ctx.strokeStyle =
       c === state.selected ? "rgba(255,74,154,.85)" : "rgba(36,48,74,.25)";
     ctx.lineWidth = 3;
+    roundRect(ctx, cx - size / 2, cy - size / 2, size, size, radius, true, true);
 
-    roundRect(ctx, cx - size/2, cy - size/2, size, size, radius, true, true);
-
-    // emoji
     ctx.font = `16px ${EMOJI_FONT}`;
     ctx.fillStyle = "#000";
     ctx.fillText(avatarEmoji(c), cx, cy + 1);
@@ -375,7 +388,6 @@ function drawTeachingHint() {
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
 
-  // 泡泡
   ctx.fillStyle = "rgba(255,255,255,.92)";
   ctx.strokeStyle = "rgba(255,74,154,.6)";
   ctx.lineWidth = 2;
@@ -383,15 +395,14 @@ function drawTeachingHint() {
   ctx.roundRect(cx - 90, cy - 28, 180, 26, 10);
   ctx.fill(); ctx.stroke();
 
-  // 文字
   ctx.fillStyle = "#24304a";
   ctx.fillText("👉 請點選正確的橫桿", cx, cy - 6);
 
   ctx.restore();
 }
 
-function draw(){
-  resizeCanvas();
+// ✅ 修正4：draw() 不再呼叫 resizeCanvas()
+function draw() {
   drawSky();
   drawLadder();
   drawPath();
@@ -402,62 +413,73 @@ function draw(){
 }
 
 /* ===============================
-   Animation loop (✅ ONLY ONE)
+   Animation loop
    =============================== */
-function startManual(){
-  if(animationRunning) return;   // ✅ 防止重複啟動
-  animationRunning=true;
-  state.animating=true;
+function startManual() {
+  if (animationRunning) return;
+  animationRunning = true;
+  state.animating = true;
 
-  const m=state.manual;
-  m.running=true;
-  m.waitingClick=false;
-  m.phase="up";
-  m.targetIndex=0;
-  m.pathPts=[];
+  const m = state.manual;
+  m.running = true;
+  m.waitingClick = false;
+  m.phase = "up";
+  m.targetIndex = 0;
+  m.pathPts = [];
 
-  const {bottom,top}=layout();
-  m.marker={x:xOf(state.selected), y:bottom};
-  const sim=simulateUp(state.selected);
-  m.targets=sim.targets;
-  m.endCol=sim.endCol;
-  m.to=m.targets.length?{x:m.marker.x,y:m.targets[0].y}:{x:m.marker.x,y:top};
-  m.pathPts.push({...m.marker});
+  const { bottom, top } = layout();
+  m.marker = { x: xOf(state.selected), y: bottom };
+  const sim = simulateUp(state.selected);
+  m.targets = sim.targets;
+  m.endCol = sim.endCol;
+  m.to = m.targets.length
+    ? { x: m.marker.x, y: m.targets[0].y }
+    : { x: m.marker.x, y: top };
+  m.pathPts.push({ ...m.marker });
 
-  if (rafID !== null) cancelAnimationFrame(rafID); // ✅ 取消前一個 loop
+  if (rafID !== null) cancelAnimationFrame(rafID);
   rafID = requestAnimationFrame(loop);
 }
 
-function loop(){
-  const m=state.manual;
-  if(!m.running){ animationRunning=false; return; }
+// ✅ 修正4：waitingClick 時不繼續跑 RAF；由 pointerdown 事件重新啟動
+function loop() {
+  const m = state.manual;
+  if (!m.running) { animationRunning = false; return; }
 
-  if(m.waitingClick){ 
-    m.phase="wait";
-    draw(); rafID = requestAnimationFrame(loop); return;
- }
+  if (m.waitingClick) {
+    m.phase = "wait";
+    draw();
+    // 暫停 RAF，等玩家點擊後由 pointerdown 重啟
+    rafID = null;
+    return;
+  }
 
-  if(m.phase==="up"){
-    const dy=m.to.y-m.marker.y;
-    m.marker.y+=clamp(dy,-SPEED_UP,SPEED_UP);
-    if(Math.abs(dy)<0.6){
-      m.marker.y=m.to.y;
-      m.pathPts.push({...m.marker});
-      if(m.targetIndex<m.targets.length){
-        m.waitingClick=true;
-        draw(); rafID = requestAnimationFrame(loop); return;
+  if (m.phase === "up") {
+    const dy = m.to.y - m.marker.y;
+    m.marker.y += clamp(dy, -SPEED_UP, SPEED_UP);
+    if (Math.abs(dy) < 0.6) {
+      m.marker.y = m.to.y;
+      m.pathPts.push({ ...m.marker });
+      if (m.targetIndex < m.targets.length) {
+        m.waitingClick = true;
+        draw();
+        rafID = null; // 暫停，等待點擊
+        return;
       }
-      finish(); return;
+      finish();
+      return;
     }
-  }else if(m.phase==="cross"){
-    const dx=m.to.x-m.marker.x;
-    m.marker.x+=clamp(dx,-SPEED_CROSS,SPEED_CROSS);
-    if(Math.abs(dx)<0.6){
-      m.marker.x=m.to.x;
-      m.pathPts.push({...m.marker});
-      m.phase="up";
-      const {top}=layout();
-      m.to=m.targetIndex<m.targets.length?{x:m.marker.x,y:m.targets[m.targetIndex].y}:{x:m.marker.x,y:top};
+  } else if (m.phase === "cross") {
+    const dx = m.to.x - m.marker.x;
+    m.marker.x += clamp(dx, -SPEED_CROSS, SPEED_CROSS);
+    if (Math.abs(dx) < 0.6) {
+      m.marker.x = m.to.x;
+      m.pathPts.push({ ...m.marker });
+      m.phase = "up";
+      const { top } = layout();
+      m.to = m.targetIndex < m.targets.length
+        ? { x: m.marker.x, y: m.targets[m.targetIndex].y }
+        : { x: m.marker.x, y: top };
     }
   }
 
@@ -468,25 +490,23 @@ function loop(){
 /* ===============================
    Finish
    =============================== */
-
-function finish(){
+function finish() {
   const m = state.manual;
   m.running = false;
   state.animating = false;
   animationRunning = false;
+  rafID = null;
 
-  // ✅ 停頓300ms再顯示結果
   setTimeout(showResultDialog, 300);
 }
-function showResultDiaglog(){
-    
 
-  // ✅ 判斷是否到達天國
+// ✅ 修正1：函式名稱從 showResultDiaglog 改為 showResultDialog
+// ✅ 修正2：整合為單一 showModal() 呼叫
+function showResultDialog() {
   const m = state.manual;
   const reachedHeaven = (m.endCol === state.heavenIndex);
   const endLabel = state.endLabels[m.endCol] || "未知的地方";
 
-  // ✅ 依結果顯示不同內容
   if (reachedHeaven) {
     dialogIcon.textContent = "🎉";
     dialogTitle.textContent = "你到達天國了！";
@@ -513,86 +533,77 @@ function showResultDiaglog(){
         「你們見祂怎樣往天上去，祂還要怎樣來。」（徒 1:11）
       </div>
     `;
-    }
-  resultDialog.showModal();
-  // ✅ 嘗試使用 dialog（桌機 Chrome / Firefox）
-if (resultDialog && typeof resultDialog.showModal === "function") {
-  try {
-    resultDialog.showModal();
-    return;
-  } catch (e) {
-    // 失敗就 fallback
   }
-}
 
-// ✅ fallback：直接顯示為 open（行動裝置一定看得到）
-resultDialog.setAttribute("open", "");
-
-// （前面設定 dialogTitle / dialogBody 的內容保持不動）
-
-// ✅ 顯示結果字卡（跨瀏覽器安全）
-if (resultDialog && typeof resultDialog.showModal === "function") {
-  try {
-    resultDialog.showModal();
-  } catch (e) {
+  // ✅ 修正2：只呼叫一次，用 try/catch 安全 fallback
+  if (resultDialog && typeof resultDialog.showModal === "function") {
+    try {
+      resultDialog.showModal();
+    } catch (e) {
+      resultDialog.setAttribute("open", "");
+    }
+  } else {
     resultDialog.setAttribute("open", "");
   }
-} else {
-  resultDialog.setAttribute("open", "");
-}
-
-  if (rafID !== null) {
-    cancelAnimationFrame(rafID);
-    rafID = null;
-  }
-
 }
 
 /* ===============================
    Events
    =============================== */
-canvas.addEventListener("pointerdown",e=>{
-  const m=state.manual;
-  if(!m.running||!m.waitingClick) return;
-  const t=m.targets[m.targetIndex];
-  const pos=getCanvasPos(e);
-  if(!hitTestRung(pos.x,pos.y,t)) {
-  m.shake = 16;
-  m.wrongFlash = 1.2;
-  draw()
-  return;
+canvas.addEventListener("pointerdown", e => {
+  const m = state.manual;
+  if (!m.running || !m.waitingClick) return;
+  const t = m.targets[m.targetIndex];
+  const pos = getCanvasPos(e);
+
+  if (!hitTestRung(pos.x, pos.y, t)) {
+    m.shake = 16;
+    m.wrongFlash = 1.2;
+    draw();
+    return;
   }
 
-  m.waitingClick=false;
-  m.phase="cross";
+  m.waitingClick = false;
+  m.phase = "cross";
   m.targetIndex++;
-  m.to={x:t.dir>0?t.x2:t.x1,y:t.y};
+  m.to = { x: t.dir > 0 ? t.x2 : t.x1, y: t.y };
+
+  // ✅ 修正4：玩家點擊正確後重啟 RAF
+  if (rafID === null && m.running) {
+    animationRunning = true;
+    rafID = requestAnimationFrame(loop);
+  }
 });
 
-btnGo.onclick=startManual;
-btnNew.onclick=()=>{ animationRunning=false; newMap(); };
-btnHint.onclick=()=>{ state.hintsEnabled=!state.hintsEnabled; syncHintUI(); };
-difficultySelect.onchange=()=>{ state.difficulty=difficultySelect.value; newMap(); };
+btnGo.onclick = startManual;
+btnNew.onclick = () => { animationRunning = false; newMap(); };
+btnHint.onclick = () => { state.hintsEnabled = !state.hintsEnabled; syncHintUI(); };
+difficultySelect.onchange = () => { state.difficulty = difficultySelect.value; newMap(); };
 
-dialogReplay.onclick=()=>{ resultDialog.close(); startManual(); };
-dialogNewMap.onclick=()=>{ resultDialog.close(); newMap(); };
-dialogClose.onclick=()=>resultDialog.close();
+dialogReplay.onclick = () => { resultDialog.close(); startManual(); };
+dialogNewMap.onclick = () => { resultDialog.close(); newMap(); };
+dialogClose.onclick = () => resultDialog.close();
 
 /* ===============================
    New Map
    =============================== */
-function newMap(){
-  animationRunning=false;
-  state.animating=false;
-  state.manual.running=false;
+function newMap() {
+  animationRunning = false;
+  state.animating = false;
+  state.manual.running = false;
+  if (rafID !== null) { cancelAnimationFrame(rafID); rafID = null; }
 
-  state.ROWS=randInt(...DIFFICULTY_CONFIG[state.difficulty].rows);
-  state.rungs=generateRungs();
-  state.endLabels=shuffle(OTHER_ENDS_POOL).map((v,i)=>i===state.heavenIndex?"✨ 天國":v);
+  state.ROWS = randInt(...DIFFICULTY_CONFIG[state.difficulty].rows);
+  state.rungs = generateRungs();
+  state.endLabels = shuffle(OTHER_ENDS_POOL).map((v, i) =>
+    i === state.heavenIndex ? "✨ 天國" : v
+  );
 
   renderChoices();
   syncHintUI();
   draw();
 }
 
+// ✅ 初始化：先 resize 再畫
+resizeCanvas();
 newMap();
