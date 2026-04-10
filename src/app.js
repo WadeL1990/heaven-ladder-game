@@ -463,7 +463,6 @@ canvas.addEventListener("pointerdown",e=>{
   m.phase="cross";
   m.targetIndex++;
   m.to={x:t.dir>0?t.x2:t.x1,y:t.y};
-  requestAnimationFrame(loop);
 });
 
 btnGo.onclick=startManual;
