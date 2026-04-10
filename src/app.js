@@ -556,7 +556,7 @@ function showResultDialog() {
     dialogBody.innerHTML = `
       <div style="margin-bottom:8px;"><b>終點：</b> ${endLabel}</div>
       <div style="margin-bottom:10px;">
-        🎉 做得好！在等耶穌再來的日子，也要每天走在跟隨祂的路上。
+        🎉 做得好！等待耶穌再來的日子，也要每天走在跟隨祂的路上。
       </div>
       <div style="font-weight:800;color:rgba(36,48,74,.7);font-size:13px;">
         「你們見祂怎樣往天上去，祂還要怎樣來。」（徒 1:11）
