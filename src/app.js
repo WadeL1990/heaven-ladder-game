@@ -1,5 +1,5 @@
 /* =====================================================
-   Heaven Ladder Game – FIXED VERSION
+   Heaven Ladder Game – FIXED VERSION v2
    修正項目：
    1. showResultDiaglog → showResultDialog（拼寫錯誤）
    2. 整合三次重複的 showModal() 呼叫
@@ -7,6 +7,8 @@
    4. loop() 在 waitingClick 時暫停 RAF，等 pointerdown 再重啟
    5. resizeCanvas() 移出 draw()，改由 resize 事件觸發
    6. RUNG_HIT_TOL 從 18 調高至 30（行動裝置友善）
+   7. 點錯橫桿時顯示紅色警示泡泡，1.2 秒後自動消失
+   8. 點對橫桿後教學提示文字立即消失
    ===================================================== */
 
 const canvas = document.getElementById("game");
@@ -90,7 +92,9 @@ let state = {
     pathPts: [],
     shake: 0,
     hintT: 0,
-    wrongFlash: 0
+    wrongFlash: 0,
+    wrongMsg: false,       // ✅ 新增：是否顯示點錯提醒
+    wrongMsgTimer: null    // ✅ 新增：自動消失計時器
   }
 };
 
@@ -376,6 +380,7 @@ function drawStartAndEndIcons() {
   ctx.restore();
 }
 
+// ✅ 修正：waitingClick 為 true 才顯示提示；點對後立即消失
 function drawTeachingHint() {
   const m = state.manual;
   if (!m.running || !m.waitingClick) return;
@@ -401,6 +406,42 @@ function drawTeachingHint() {
   ctx.restore();
 }
 
+// ✅ 新增：點錯橫桿時的警示泡泡（顯示1.2秒後自動消失）
+function drawWrongMsg() {
+  const m = state.manual;
+  if (!m.running || !m.wrongMsg) return;
+
+  const cx = m.marker.x;
+  const cy = m.marker.y - 60;
+
+  ctx.save();
+  ctx.font = "bold 14px ui-rounded, system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+
+  // 紅色警示泡泡
+  ctx.fillStyle = "rgba(255,80,80,.95)";
+  ctx.strokeStyle = "rgba(180,30,30,.7)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(cx - 80, cy - 28, 160, 28, 10);
+  ctx.fill(); ctx.stroke();
+
+  // 泡泡尾巴（小三角形朝下）
+  ctx.fillStyle = "rgba(255,80,80,.95)";
+  ctx.beginPath();
+  ctx.moveTo(cx - 8, cy);
+  ctx.lineTo(cx + 8, cy);
+  ctx.lineTo(cx, cy + 10);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#fff";
+  ctx.fillText("❌ 點錯了！請再試一次", cx, cy - 4);
+
+  ctx.restore();
+}
+
 // ✅ 修正4：draw() 不再呼叫 resizeCanvas()
 function draw() {
   drawSky();
@@ -410,6 +451,7 @@ function draw() {
   drawLabels();
   drawStartAndEndIcons();
   drawTeachingHint();
+  drawWrongMsg();  // ✅ 新增
 }
 
 /* ===============================
@@ -557,18 +599,28 @@ canvas.addEventListener("pointerdown", e => {
   const pos = getCanvasPos(e);
 
   if (!hitTestRung(pos.x, pos.y, t)) {
+    // ✅ 點錯：顯示警示泡泡，1.2 秒後自動消失
     m.shake = 16;
     m.wrongFlash = 1.2;
+    m.wrongMsg = true;
+    if (m.wrongMsgTimer) clearTimeout(m.wrongMsgTimer);
+    m.wrongMsgTimer = setTimeout(() => {
+      m.wrongMsg = false;
+      draw();
+    }, 1200);
     draw();
     return;
   }
 
+  // ✅ 點對：立即清除所有提示（包含教學提示與錯誤泡泡）
+  m.wrongMsg = false;
+  if (m.wrongMsgTimer) { clearTimeout(m.wrongMsgTimer); m.wrongMsgTimer = null; }
   m.waitingClick = false;
   m.phase = "cross";
   m.targetIndex++;
   m.to = { x: t.dir > 0 ? t.x2 : t.x1, y: t.y };
 
-  // ✅ 修正4：玩家點擊正確後重啟 RAF
+  // 玩家點擊正確後重啟 RAF
   if (rafID === null && m.running) {
     animationRunning = true;
     rafID = requestAnimationFrame(loop);
@@ -590,7 +642,10 @@ dialogClose.onclick = () => resultDialog.close();
 function newMap() {
   animationRunning = false;
   state.animating = false;
-  state.manual.running = false;
+  const m = state.manual;
+  m.running = false;
+  m.wrongMsg = false;
+  if (m.wrongMsgTimer) { clearTimeout(m.wrongMsgTimer); m.wrongMsgTimer = null; }
   if (rafID !== null) { cancelAnimationFrame(rafID); rafID = null; }
 
   state.ROWS = randInt(...DIFFICULTY_CONFIG[state.difficulty].rows);
