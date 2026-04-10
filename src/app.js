@@ -306,6 +306,18 @@ function drawLabels() {
   ctx.restore();
 }
 
+function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
+}
 
 function drawStartAndEndIcons() {
   const { top, bottom } = layout();
@@ -390,7 +402,10 @@ function loop(){
   const m=state.manual;
   if(!m.running){ animationRunning=false; return; }
 
-  if(m.waitingClick){ draw(); requestAnimationFrame(loop); return; }
+  if(m.waitingClick){ 
+    m.phase="wait";
+    draw(); requestAnimationFrame(loop); return;
+ }
 
   if(m.phase==="up"){
     const dy=m.to.y-m.marker.y;
@@ -448,6 +463,7 @@ canvas.addEventListener("pointerdown",e=>{
   m.phase="cross";
   m.targetIndex++;
   m.to={x:t.dir>0?t.x2:t.x1,y:t.y};
+  requestAnimationFrame(loop);
 });
 
 btnGo.onclick=startManual;
