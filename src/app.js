@@ -241,34 +241,60 @@ function draw(){
   drawMarker();
 }
 
-function drawMarker(){
+function drawMarker() {
   const m = state.manual;
-  if(!m.running) return;
+  if (!m.running) return;
 
   const shake = m.shake || 0;
   const sx = shake ? (Math.random() - 0.5) * shake : 0;
   const sy = shake ? (Math.random() - 0.5) * shake : 0;
 
-  const emoji = avatarEmoji(state.selected); // ✅ 同步角色
+  const emoji = avatarEmoji(state.selected);
 
-  // 泡泡底
+  const cx = m.marker.x + sx;
+  const cy = m.marker.y + sy;
+  const size = 34;     // 頭像大小
+  const radius = 8;    // 圓角程度
+
   ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,.92)";
-  ctx.strokeStyle = "rgba(255,74,154,.65)";
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.arc(m.marker.x + sx, m.marker.y + sy, 14, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
 
-  // 角色 emoji（取代 ★）
-  ctx.font = "20px ui-rounded, system-ui";
+  /* ✅ 圓角頭像框 */
+  ctx.fillStyle = "rgba(255,255,255,.96)";
+  ctx.strokeStyle = "rgba(255,74,154,.75)";
+  ctx.lineWidth = 4;
+  roundRect(
+    ctx,
+    cx - size / 2,
+    cy - size / 2,
+    size,
+    size,
+    radius,
+    true,
+    true
+  );
+
+  /* ✅ Emoji（使用彩色 emoji 字型） */
+  ctx.font = "20px 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji', system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillStyle = "#24304a";
-  ctx.fillText(emoji, m.marker.x + sx, m.marker.y + sy + 1);
+  ctx.fillStyle = "#000"; // 對 emoji 無影響，但保險
+  ctx.fillText(emoji, cx, cy + 1);
 
   ctx.restore();
+}
+
+/* ✅ 輔助：圓角矩形 */
+function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
 }
 
 
