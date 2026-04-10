@@ -28,6 +28,7 @@ const dialogNewMap = document.getElementById("dialogNewMap");
    Global animation lock
    =============================== */
 let animationRunning = false; // ⭐ 核心修正：只允許一個 loop
+let rafID = null; // 存目前唯一的requestAnimationFramme
 
 /* ===============================
    Config
@@ -395,7 +396,8 @@ function startManual(){
   m.to=m.targets.length?{x:m.marker.x,y:m.targets[0].y}:{x:m.marker.x,y:top};
   m.pathPts.push({...m.marker});
 
-  requestAnimationFrame(loop);
+  if (rafID !== null) cancelAnimationFrame(rafID); // ✅ 取消前一個 loop
+  rafID = requestAnimationFrame(loop);
 }
 
 function loop(){
@@ -404,7 +406,7 @@ function loop(){
 
   if(m.waitingClick){ 
     m.phase="wait";
-    draw(); requestAnimationFrame(loop); return;
+    draw(); rafID = requestAnimationFrame(loop); return;
  }
 
   if(m.phase==="up"){
@@ -415,7 +417,7 @@ function loop(){
       m.pathPts.push({...m.marker});
       if(m.targetIndex<m.targets.length){
         m.waitingClick=true;
-        draw(); requestAnimationFrame(loop); return;
+        draw(); rafID = requestAnimationFrame(loop); return;
       }
       finish(); return;
     }
@@ -432,7 +434,7 @@ function loop(){
   }
 
   draw();
-  requestAnimationFrame(loop);
+  rafID = requestAnimationFrame(loop);
 }
 
 /* ===============================
@@ -447,6 +449,11 @@ function finish(){
   dialogTitle.textContent="完成了！";
   dialogBody.innerHTML="你已完成這一次的選擇。<br/>徒 1:11";
   resultDialog.showModal();
+  if (rafID !== null) {
+    cancelAnimationFrame(rafID);
+    rafID = null;
+  }
+
 }
 
 /* ===============================
