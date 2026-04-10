@@ -188,3 +188,85 @@ canvas{
   background: linear-gradient(180deg, #fff2a6, #ffd166);
   color: #5a3b00;
 }
+
+/* --- Result dialog styles --- */
+.dialog{
+  border: 0;
+  padding: 0;
+  border-radius: 22px;
+  width: min(520px, calc(100vw - 28px));
+  box-shadow: 0 20px 60px rgba(0,0,0,.18);
+}
+
+.dialog::backdrop{
+  background: rgba(10, 16, 28, .35);
+  backdrop-filter: blur(2px);
+}
+
+.dialogInner{
+  background: rgba(255,255,255,.96);
+  border: 3px solid rgba(255,255,255,.95);
+  border-radius: 22px;
+  overflow: hidden;
+}
+
+.dialogHeader{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  padding: 14px 14px 10px 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.72));
+}
+
+.dialogIcon{
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  display:grid;
+  place-items:center;
+  font-size: 24px;
+  background: rgba(255, 221, 102, .55);
+  border: 2px solid rgba(90, 60, 0, .12);
+}
+
+.dialogTitle{
+  font-weight: 1000;
+  font-size: 18px;
+  color: #24304a;
+}
+
+.dialogDesc{
+  margin-top: 2px;
+  font-weight: 800;
+  font-size: 13px;
+  color: rgba(36,48,74,.72);
+}
+
+.dialogTitleWrap{ flex:1; }
+
+.dialogClose{
+  border: 0;
+  cursor: pointer;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: rgba(36,48,74,.06);
+  font-weight: 1000;
+}
+
+.dialogBody{
+  padding: 6px 14px 10px 14px;
+}
+
+.dialogBodyText{
+  font-weight: 850;
+  color: #24304a;
+  line-height: 1.6;
+}
+
+.dialogActions{
+  display:flex;
+  gap: 10px;
+  padding: 12px 14px 14px 14px;
+  justify-content: flex-end;
+}

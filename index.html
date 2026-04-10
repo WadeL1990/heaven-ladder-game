@@ -51,6 +51,29 @@
       </section>
     </main>
 
+<!-- 結果彈窗：走到終點後才顯示 -->
+<dialog id="resultDialog" class="dialog" closedby="any" aria-labelledby="dialogTitle" aria-describedby="dialogDesc">
+  <div class="dialogInner">
+    <div class="dialogHeader">
+      <div class="dialogIcon" id="dialogIcon">✨</div>
+      <div class="dialogTitleWrap">
+        <div id="dialogTitle" class="dialogTitle">結果</div>
+        <div id="dialogDesc" class="dialogDesc">你走到了哪裡呢？</div>
+      </div>
+      <button id="dialogClose" class="dialogClose" type="button" aria-label="關閉">✕</button>
+    </div>
+
+    <div class="dialogBody">
+      <div id="dialogBody" class="dialogBodyText"></div>
+    </div>
+
+    <div class="dialogActions">
+      <button id="dialogReplay" class="btn btn-primary" type="button">再玩一次</button>
+      <button id="dialogNewMap" class="btn btn-secondary" type="button">換新地圖</button>
+    </div>
+  </div>
+</dialog>
+
     <footer class="footer">
       <span>Made for Kids ✿ 主日學互動體驗</span>
     </footer>
