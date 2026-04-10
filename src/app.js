@@ -95,6 +95,46 @@ function renderChoices(){
 }
 
 /* ===============================
+    Mouse Postion
+    =============================== */
+function getCanvasPos(evt){
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (evt.clientX - rect.left) * (canvas.width / rect.width) / DPR,
+    y: (evt.clientY - rect.top) * (canvas.height / rect.height) / DPR
+  };
+}
+
+function hitTestRung(px, py, t){
+  // 計算點到橫桿線段的距離
+  const x1 = t.x1, y1 = t.y;
+  const x2 = t.x2, y2 = t.y;
+
+  const A = px - x1;
+  const B = py - y1;
+  const C = x2 - x1;
+  const D = y2 - y1;
+
+  const dot = A*C + B*D;
+  const lenSq = C*C + D*D;
+  let param = -1;
+  if(lenSq !== 0) param = dot / lenSq;
+
+  let xx, yy;
+  if(param < 0){ xx = x1; yy = y1; }
+  else if(param > 1){ xx = x2; yy = y2; }
+  else{
+    xx = x1 + param * C;
+    yy = y1 + param * D;
+  }
+
+  const dx = px - xx;
+  const dy = py - yy;
+  return Math.sqrt(dx*dx + dy*dy) < RUNG_HIT_TOL;
+}
+
+
+/* ===============================
    Layout
    =============================== */
 function resizeCanvas(){
@@ -261,15 +301,35 @@ function finish(){
 /* ===============================
    Events
    =============================== */
-canvas.addEventListener("pointerdown",()=>{
-  const m=state.manual;
+canvas.addEventListener("pointerdown",(e)=>{
+  const m = state.manual;
   if(!m.waitingClick) return;
-  const t=m.targets[m.targetIndex++];
-  m.waitingClick=false;
-  m.phase="cross";
-  m.to={x:t.dir>0?t.x2:t.x1,y:t.y};
+
+  const t = m.targets[m.targetIndex];
+  if(!t) return;
+
+  const pos = getCanvasPos(e);
+
+  // ✅ 關鍵：只有真的點到橫桿，才允許通過
+  if(!hitTestRung(pos.x, pos.y, t)){
+    // 點錯：什麼都不做（或之後你要加抖動）
+    m.shake = 12;
+    return;
+  }
+
+  // ✅ 點對
+  m.waitingClick = false;
+  m.phase = "cross";
+  m.targetIndex++;
+
+  m.to = {
+    x: t.dir > 0 ? t.x2 : t.x1,
+    y: t.y
+  };
+
   requestAnimationFrame(loop);
 });
+
 
 btnGo.onclick=startManual;
 btnNew.onclick=newMap;
