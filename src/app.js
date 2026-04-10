@@ -278,12 +278,86 @@ function drawMarker(){
   ctx.fillText(avatarEmoji(state.selected),cx,cy+1);
 }
 
+function drawLabels() {
+  const { top, bottom } = layout();
+
+  ctx.save();
+  ctx.textAlign = "center";
+
+  /* ===== 終點文字 ===== */
+  for (let c = 0; c < state.N; c++) {
+    const isHeaven = c === state.heavenIndex;
+    ctx.font = isHeaven
+      ? "900 18px ui-rounded, system-ui"
+      : "800 14px ui-rounded, system-ui";
+    ctx.fillStyle = isHeaven ? "#2ad48f" : "rgba(36,48,74,.8)";
+    ctx.fillText(state.endLabels[c], xOf(c), top - 44);
+  }
+
+  /* ===== 起點角色（emoji） ===== */
+  ctx.font = `18px ${EMOJI_FONT}`;
+  for (let c = 0; c < state.N; c++) {
+    ctx.fillStyle = c === state.selected
+      ? "#ff4a9a"
+      : "rgba(36,48,74,.85)";
+    ctx.fillText(avatarEmoji(c), xOf(c), bottom + 44);
+  }
+
+  ctx.restore();
+}
+
+
+function drawStartAndEndIcons() {
+  const { top, bottom } = layout();
+
+  ctx.save();
+
+  /* ===== 終點（上方）icon ===== */
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `20px ${EMOJI_FONT}`;
+
+  for (let c = 0; c < state.N; c++) {
+    const label = state.endLabels[c] || "";
+    const emoji = label.split(" ")[0]; // 取 "✨" 或其他 emoji
+
+    // 畫在終點文字的「正中間上方」
+    ctx.fillText(emoji, xOf(c), top - 68);
+  }
+
+  /* ===== 起點（下方）icon ===== */
+  const size = 28;
+  const radius = 7;
+
+  for (let c = 0; c < state.N; c++) {
+    const cx = xOf(c);
+    const cy = bottom + 72;
+
+    // 圓角頭像框
+    ctx.fillStyle = "rgba(255,255,255,.95)";
+    ctx.strokeStyle =
+      c === state.selected ? "rgba(255,74,154,.85)" : "rgba(36,48,74,.25)";
+    ctx.lineWidth = 3;
+
+    roundRect(ctx, cx - size/2, cy - size/2, size, size, radius, true, true);
+
+    // emoji
+    ctx.font = `16px ${EMOJI_FONT}`;
+    ctx.fillStyle = "#000";
+    ctx.fillText(avatarEmoji(c), cx, cy + 1);
+  }
+
+  ctx.restore();
+}
+
 function draw(){
   resizeCanvas();
   drawSky();
   drawLadder();
   drawPath();
   drawMarker();
+  drawLabels();
+  drawStartAndEndIcons();
 }
 
 /* ===============================
