@@ -1,5 +1,5 @@
 /* =====================================================
-   Heaven Ladder Game – FIXED VERSION v2
+   Heaven Ladder Game – FIXED VERSION v3
    修正項目：
    1. showResultDiaglog → showResultDialog（拼寫錯誤）
    2. 整合三次重複的 showModal() 呼叫
@@ -9,6 +9,7 @@
    6. RUNG_HIT_TOL 從 18 調高至 30（行動裝置友善）
    7. 點錯橫桿時顯示紅色警示泡泡，1.2 秒後自動消失
    8. 點對橫桿後教學提示文字立即消失
+   9. 加入 Web Audio API 音效模組（SFX）
    ===================================================== */
 
 const canvas = document.getElementById("game");
@@ -34,6 +35,86 @@ const dialogReplay = document.getElementById("dialogReplay");
 const dialogNewMap = document.getElementById("dialogNewMap");
 
 /* ===============================
+   🔊 SFX 音效模組（Web Audio API）
+   AudioContext 在第一次使用者互動後才建立，
+   符合瀏覽器自動播放政策。
+   =============================== */
+const SFX = (() => {
+  let ac = null;
+
+  // 確保 AudioContext 已建立（第一次互動後呼叫）
+  function getAC() {
+    if (!ac) {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    // 若因背景切換而被暫停，恢復它
+    if (ac.state === "suspended") ac.resume();
+    return ac;
+  }
+
+  /**
+   * 播放單一音調
+   * @param {number} freq      - 頻率 (Hz)
+   * @param {string} type      - 波形：sine / square / triangle / sawtooth
+   * @param {number} duration  - 持續時間 (秒)
+   * @param {number} vol       - 音量 0~1，預設 0.3
+   * @param {number} delay     - 延遲開始 (秒)，預設 0
+   */
+  function beep(freq, type, duration, vol = 0.3, delay = 0) {
+    const a = getAC();
+    const osc = a.createOscillator();
+    const gain = a.createGain();
+    osc.connect(gain);
+    gain.connect(a.destination);
+    osc.type = type;
+    osc.frequency.value = freq;
+    const t0 = a.currentTime + delay;
+    gain.gain.setValueAtTime(vol, t0);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+    osc.start(t0);
+    osc.stop(t0 + duration);
+  }
+
+  return {
+    // 🟢 按下「開始」，角色出發
+    start() {
+      beep(440, "sine", 0.10, 0.25);
+      beep(550, "sine", 0.10, 0.20, 0.08);
+    },
+
+    // 🔔 到達橫桿，等待玩家點擊
+    hint() {
+      beep(880, "sine", 0.18, 0.22);
+    },
+
+    // ✅ 點對橫桿，角色繼續前進
+    correct() {
+      beep(523, "sine", 0.10, 0.28);
+      beep(659, "sine", 0.14, 0.28, 0.10);
+    },
+
+    // ❌ 點錯橫桿
+    wrong() {
+      beep(200, "sawtooth", 0.18, 0.28);
+      beep(160, "sawtooth", 0.18, 0.20, 0.12);
+    },
+
+    // 🎉 到達天國——上升和弦
+    heaven() {
+      [523, 659, 784, 1047].forEach((f, i) =>
+        beep(f, "sine", 0.35, 0.28, i * 0.10)
+      );
+    },
+
+    // 😔 未到天國——下行音
+    miss() {
+      beep(330, "sine", 0.20, 0.22);
+      beep(262, "sine", 0.28, 0.22, 0.18);
+    }
+  };
+})();
+
+/* ===============================
    Global animation lock
    =============================== */
 let animationRunning = false;
@@ -57,7 +138,6 @@ const RUNG_WIDTH = 10;
 const SPEED_UP = 2.6;
 const SPEED_CROSS = 3.4;
 
-// ✅ 修正5：提高觸控命中容差，行動裝置更好點擊
 const RUNG_HIT_TOL = 30;
 
 const DIFFICULTY_CONFIG = {
@@ -93,8 +173,8 @@ let state = {
     shake: 0,
     hintT: 0,
     wrongFlash: 0,
-    wrongMsg: false,       // ✅ 新增：是否顯示點錯提醒
-    wrongMsgTimer: null    // ✅ 新增：自動消失計時器
+    wrongMsg: false,
+    wrongMsgTimer: null
   }
 };
 
@@ -108,7 +188,6 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const avatarEmoji = i => (AVATARS[i] || "").split(" ")[0];
 const avatarName  = i => (AVATARS[i] || "").split(" ").slice(1).join(" ");
 
-// ✅ 修正4：resizeCanvas 獨立出來，不在 draw() 裡每幀呼叫
 function resizeCanvas() {
   const w = canvas.clientWidth || 960;
   const h = Math.round(w * 0.68);
@@ -296,18 +375,15 @@ function drawMarker() {
   ctx.fillText(avatarEmoji(state.selected), cx, cy + 1);
 }
 
-// ✅ 修正3：drawLabels 只畫文字，不再重複畫 emoji（emoji 由 drawStartAndEndIcons 負責）
 function drawLabels() {
   const { top, bottom } = layout();
 
   ctx.save();
   ctx.textAlign = "center";
 
-  // 終點文字（名稱，不含 emoji）
   for (let c = 0; c < state.N; c++) {
     const isHeaven = c === state.heavenIndex;
     const label = state.endLabels[c] || "";
-    // 取文字部分（去掉開頭 emoji）
     const textOnly = label.replace(/^\S+\s*/, "");
 
     ctx.font = isHeaven
@@ -317,7 +393,6 @@ function drawLabels() {
     ctx.fillText(textOnly, xOf(c), top - 44);
   }
 
-  // 起點角色名稱（文字，不含 emoji；emoji 由 drawStartAndEndIcons 畫）
   ctx.font = "800 13px ui-rounded, system-ui";
   for (let c = 0; c < state.N; c++) {
     ctx.fillStyle = c === state.selected
@@ -342,7 +417,6 @@ function roundRect(ctx, x, y, w, h, r, fill, stroke) {
   if (stroke) ctx.stroke();
 }
 
-// ✅ 修正3：此函式負責所有 emoji 繪製（上方終點 emoji、下方角色 emoji），不與 drawLabels 重複
 function drawStartAndEndIcons() {
   const { top, bottom } = layout();
 
@@ -350,7 +424,6 @@ function drawStartAndEndIcons() {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  // 終點（上方）emoji
   ctx.font = `20px ${EMOJI_FONT}`;
   for (let c = 0; c < state.N; c++) {
     const label = state.endLabels[c] || "";
@@ -358,7 +431,6 @@ function drawStartAndEndIcons() {
     ctx.fillText(emoji, xOf(c), top - 68);
   }
 
-  // 起點（下方）角色 emoji + 頭像框
   const size = 28;
   const radius = 7;
 
@@ -380,7 +452,6 @@ function drawStartAndEndIcons() {
   ctx.restore();
 }
 
-// ✅ 修正：waitingClick 為 true 才顯示提示；點對後立即消失
 function drawTeachingHint() {
   const m = state.manual;
   if (!m.running || !m.waitingClick) return;
@@ -406,7 +477,6 @@ function drawTeachingHint() {
   ctx.restore();
 }
 
-// ✅ 新增：點錯橫桿時的警示泡泡（顯示1.2秒後自動消失）
 function drawWrongMsg() {
   const m = state.manual;
   if (!m.running || !m.wrongMsg) return;
@@ -419,7 +489,6 @@ function drawWrongMsg() {
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
 
-  // 紅色警示泡泡
   ctx.fillStyle = "rgba(255,80,80,.95)";
   ctx.strokeStyle = "rgba(180,30,30,.7)";
   ctx.lineWidth = 2;
@@ -427,7 +496,6 @@ function drawWrongMsg() {
   ctx.roundRect(cx - 80, cy - 28, 160, 28, 10);
   ctx.fill(); ctx.stroke();
 
-  // 泡泡尾巴（小三角形朝下）
   ctx.fillStyle = "rgba(255,80,80,.95)";
   ctx.beginPath();
   ctx.moveTo(cx - 8, cy);
@@ -442,7 +510,6 @@ function drawWrongMsg() {
   ctx.restore();
 }
 
-// ✅ 修正4：draw() 不再呼叫 resizeCanvas()
 function draw() {
   drawSky();
   drawLadder();
@@ -451,7 +518,7 @@ function draw() {
   drawLabels();
   drawStartAndEndIcons();
   drawTeachingHint();
-  drawWrongMsg();  // ✅ 新增
+  drawWrongMsg();
 }
 
 /* ===============================
@@ -461,6 +528,9 @@ function startManual() {
   if (animationRunning) return;
   animationRunning = true;
   state.animating = true;
+
+  // 🔊 出發音效
+  SFX.start();
 
   const m = state.manual;
   m.running = true;
@@ -483,7 +553,6 @@ function startManual() {
   rafID = requestAnimationFrame(loop);
 }
 
-// ✅ 修正4：waitingClick 時不繼續跑 RAF；由 pointerdown 事件重新啟動
 function loop() {
   const m = state.manual;
   if (!m.running) { animationRunning = false; return; }
@@ -491,7 +560,6 @@ function loop() {
   if (m.waitingClick) {
     m.phase = "wait";
     draw();
-    // 暫停 RAF，等玩家點擊後由 pointerdown 重啟
     rafID = null;
     return;
   }
@@ -504,8 +572,10 @@ function loop() {
       m.pathPts.push({ ...m.marker });
       if (m.targetIndex < m.targets.length) {
         m.waitingClick = true;
+        // 🔊 到達橫桿，提示玩家點擊
+        SFX.hint();
         draw();
-        rafID = null; // 暫停，等待點擊
+        rafID = null;
         return;
       }
       finish();
@@ -542,14 +612,14 @@ function finish() {
   setTimeout(showResultDialog, 300);
 }
 
-// ✅ 修正1：函式名稱從 showResultDiaglog 改為 showResultDialog
-// ✅ 修正2：整合為單一 showModal() 呼叫
 function showResultDialog() {
   const m = state.manual;
   const reachedHeaven = (m.endCol === state.heavenIndex);
   const endLabel = state.endLabels[m.endCol] || "未知的地方";
 
   if (reachedHeaven) {
+    // 🔊 天國勝利音效
+    SFX.heaven();
     dialogIcon.textContent = "🎉";
     dialogTitle.textContent = "你到達天國了！";
     dialogDesc.textContent = "你選擇了正確的道路";
@@ -563,6 +633,8 @@ function showResultDialog() {
       </div>
     `;
   } else {
+    // 🔊 未到天國音效
+    SFX.miss();
     dialogIcon.textContent = "🙂";
     dialogTitle.textContent = "再試一次！";
     dialogDesc.textContent = "這條路很吸引人，但沒有通往天國";
@@ -577,7 +649,6 @@ function showResultDialog() {
     `;
   }
 
-  // ✅ 修正2：只呼叫一次，用 try/catch 安全 fallback
   if (resultDialog && typeof resultDialog.showModal === "function") {
     try {
       resultDialog.showModal();
@@ -599,7 +670,8 @@ canvas.addEventListener("pointerdown", e => {
   const pos = getCanvasPos(e);
 
   if (!hitTestRung(pos.x, pos.y, t)) {
-    // ✅ 點錯：顯示警示泡泡，1.2 秒後自動消失
+    // 🔊 點錯音效
+    SFX.wrong();
     m.shake = 16;
     m.wrongFlash = 1.2;
     m.wrongMsg = true;
@@ -612,7 +684,8 @@ canvas.addEventListener("pointerdown", e => {
     return;
   }
 
-  // ✅ 點對：立即清除所有提示（包含教學提示與錯誤泡泡）
+  // 🔊 點對音效
+  SFX.correct();
   m.wrongMsg = false;
   if (m.wrongMsgTimer) { clearTimeout(m.wrongMsgTimer); m.wrongMsgTimer = null; }
   m.waitingClick = false;
@@ -620,7 +693,6 @@ canvas.addEventListener("pointerdown", e => {
   m.targetIndex++;
   m.to = { x: t.dir > 0 ? t.x2 : t.x1, y: t.y };
 
-  // 玩家點擊正確後重啟 RAF
   if (rafID === null && m.running) {
     animationRunning = true;
     rafID = requestAnimationFrame(loop);
@@ -659,6 +731,6 @@ function newMap() {
   draw();
 }
 
-// ✅ 初始化：先 resize 再畫
+// 初始化：先 resize 再畫
 resizeCanvas();
 newMap();
